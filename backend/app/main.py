@@ -9,6 +9,9 @@ from fastapi.responses import FileResponse
 
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
+from app.llmsuite.client import LLMSuiteProxyClient
+from app.llmsuite.config import LLMSuiteConfig
+from app.llmsuite.routes import router as llmsuite_router
 from app.routers.exports import router as exports_router
 from app.routers.index_jobs import router as index_jobs_router
 from app.routers.keywords import router as keywords_router
@@ -58,6 +61,10 @@ tags_metadata = [
         "name": "screenings",
         "description": "Upload screening PDFs, manage deduplicated drafts, and preview extracted intake data.",
     },
+    {
+        "name": "llmsuite",
+        "description": "Stub LLMSuite-compatible proxy routes for chat, structured output, deployments, health, and identity.",
+    },
 ]
 
 
@@ -65,7 +72,18 @@ tags_metadata = [
 async def lifespan(app: FastAPI):
     if not hasattr(app.state, "settings"):
         app.state.settings = get_settings()
+    if not hasattr(app.state, "llmsuite_client"):
+        llmsuite_client = LLMSuiteProxyClient(
+            LLMSuiteConfig(
+                user_data_dir=str(Path(__file__).resolve().parents[2] / "output" / "playwright" / "llmsuite-profile"),
+            )
+        )
+        await llmsuite_client.start()
+        app.state.llmsuite_client = llmsuite_client
     yield
+    llmsuite_client = getattr(app.state, "llmsuite_client", None)
+    if llmsuite_client is not None:
+        await llmsuite_client.stop()
 
 
 def create_app(settings=None) -> FastAPI:
@@ -128,6 +146,7 @@ def create_app(settings=None) -> FastAPI:
     app.include_router(exports_router, prefix=settings.api_v1_prefix)
     app.include_router(index_jobs_router, prefix=settings.api_v1_prefix)
     app.include_router(screenings_router, prefix=settings.api_v1_prefix)
+    app.include_router(llmsuite_router, prefix=settings.api_v1_prefix)
 
     # Serve pre-built React frontend in production (when frontend/dist/ exists).
     # Must be registered after all API routers so /api/v1/* is matched first.
