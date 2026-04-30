@@ -13,6 +13,10 @@ export {
   patchScreeningFields,
   getScreeningPdfUrl,
   startScreening,
+  getLLMSuiteHealth,
+  listLLMSuiteModels,
+  createLLMSuiteChatCompletion,
+  createLLMSuiteStructuredCompletion,
 } from './api/endpoints';
 export type {
   SearchResultRow,
@@ -34,4 +38,14 @@ export type {
   ScreeningFieldPatchRequest,
   ScreeningFieldPatchResponse,
   ScreeningStartResponse,
+  LLMSuiteClientWarning,
+  LLMSuiteIdentity,
+  LLMSuiteModelInfo,
+  LLMSuiteModelConfig,
+  LLMSuiteChatMessage,
+  LLMSuiteChatCreateRequest,
+  LLMSuiteChatCompletionResponse,
+  LLMSuiteStructuredChatRequest,
+  LLMSuiteStructuredChatResponse,
+  LLMSuiteHealthStatus,
 } from './api/types';

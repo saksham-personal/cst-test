@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ScreeningDetail, ScreeningFieldPatchRequest } from '../api/types';
@@ -18,6 +18,7 @@ import { Input } from '../components/ui/input';
 
 export function ScreeningDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [screening, setScreening] = useState<ScreeningDetail | null>(null);
   const [screenNameInput, setScreenNameInput] = useState('');
   const [websiteInput, setWebsiteInput] = useState('');
@@ -114,6 +115,13 @@ export function ScreeningDetailPage() {
       const response = await startScreening(id);
       setScreening((current) => current ? { ...current, status: response.status } : current);
       toast.success(response.message);
+      navigate(`/llm-chat/${id}`, {
+        state: {
+          seededScreeningPayload: response.payload,
+          sourceScreeningId: id,
+          sourcePdfName: screening?.original_filename ?? null,
+        },
+      });
     } finally {
       setIsStarting(false);
     }

@@ -14,6 +14,12 @@ import type {
   ScreeningFieldPatchResponse,
   ScreeningIntakeResponse,
   ScreeningStartResponse,
+  LLMSuiteChatCompletionResponse,
+  LLMSuiteChatCreateRequest,
+  LLMSuiteHealthStatus,
+  LLMSuiteModelInfo,
+  LLMSuiteStructuredChatRequest,
+  LLMSuiteStructuredChatResponse,
 } from './types';
 
 // ── Search ─────────────────────────────────────────────────────
@@ -321,5 +327,30 @@ export async function startScreening(screeningId: string): Promise<ScreeningStar
   const { data } = await apiClient.post<ScreeningStartResponse>(
     `/v1/screenings/${encodeURIComponent(screeningId)}/start`,
   );
+  return data;
+}
+
+// ── LLMSuite Stub Proxy ───────────────────────────────────────
+export async function getLLMSuiteHealth(): Promise<LLMSuiteHealthStatus> {
+  const { data } = await apiClient.get<LLMSuiteHealthStatus>('/v1/llmsuite/health');
+  return data;
+}
+
+export async function listLLMSuiteModels(): Promise<LLMSuiteModelInfo[]> {
+  const { data } = await apiClient.get<LLMSuiteModelInfo[]>('/v1/llmsuite/models');
+  return data;
+}
+
+export async function createLLMSuiteChatCompletion(
+  payload: LLMSuiteChatCreateRequest,
+): Promise<LLMSuiteChatCompletionResponse> {
+  const { data } = await apiClient.post<LLMSuiteChatCompletionResponse>('/v1/llmsuite/chat/completions', payload);
+  return data;
+}
+
+export async function createLLMSuiteStructuredCompletion(
+  payload: LLMSuiteStructuredChatRequest,
+): Promise<LLMSuiteStructuredChatResponse> {
+  const { data } = await apiClient.post<LLMSuiteStructuredChatResponse>('/v1/llmsuite/structured', payload);
   return data;
 }

@@ -1,4 +1,4 @@
-import { Search, List, Database, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Search, List, Database, ChevronLeft, ChevronRight, FileText, MessagesSquare } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { useUiStore } from '../../stores/uiStore';
@@ -10,6 +10,7 @@ export function Sidebar() {
 
   const navItems = [
     { label: 'Form Intake', icon: FileText, path: '/screenings/new' },
+    { label: 'LLM Chat', icon: MessagesSquare, path: '/llm-chat' },
     { label: 'Search', icon: Search, path: '/search' },
     { label: 'Lists', icon: List, path: '/lists' },
     { label: 'Build Index', icon: Database, path: '/build-index' },

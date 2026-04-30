@@ -227,3 +227,118 @@ export interface ScreeningStartResponse {
   message: string;
   payload: Record<string, any>;
 }
+
+export type LLMSuiteMessageRole = 'system' | 'user' | 'assistant' | 'tool';
+
+export type LLMSuiteWarningCode =
+  | 'auth_recovered'
+  | 'rate_limited'
+  | 'blank_response_retry'
+  | 'timeout_retry'
+  | 'json_parse_failed'
+  | 'json_repair_attempted'
+  | 'schema_validation_failed'
+  | 'partial_structured_output'
+  | 'provider_changed'
+  | 'stub_response';
+
+export interface LLMSuiteClientWarning {
+  code: LLMSuiteWarningCode;
+  message: string;
+  details: Record<string, any>;
+}
+
+export interface LLMSuiteIdentity {
+  tenantId: string;
+  groupId: string;
+  userId: string | null;
+  raw: Record<string, any>;
+}
+
+export interface LLMSuiteModelInfo {
+  modelId: string;
+  displayName: string | null;
+  provider: string | null;
+  supportsThinking: boolean | null;
+  supportsTools: boolean | null;
+  raw: Record<string, any>;
+}
+
+export interface LLMSuiteModelConfig {
+  model: string;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  thinking?: boolean | null;
+  topP?: number | null;
+  extra?: Record<string, any>;
+}
+
+export interface LLMSuiteChatMessage {
+  role: LLMSuiteMessageRole;
+  content: string;
+  name?: string | null;
+  metadata?: Record<string, any>;
+}
+
+export interface LLMSuiteUsageInfo {
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  totalTokens?: number | null;
+  raw: Record<string, any>;
+}
+
+export interface LLMSuiteChatCreateRequest {
+  deploymentId: string;
+  conversationId: string;
+  messages: LLMSuiteChatMessage[];
+  modelConfig?: LLMSuiteModelConfig | null;
+  toolsEnabled?: boolean | null;
+  sourcesEnabled?: boolean | null;
+  metadata?: Record<string, any>;
+  retryOnBlankMessage?: boolean;
+  retryOnTimeout?: boolean;
+  retryOnAuthError?: boolean;
+}
+
+export interface LLMSuiteChatCompletionResponse {
+  deploymentId: string;
+  conversationId: string;
+  message: LLMSuiteChatMessage;
+  finishReason?: string | null;
+  usage?: LLMSuiteUsageInfo | null;
+  latencyMs?: number | null;
+  warnings: LLMSuiteClientWarning[];
+  raw: Record<string, any>;
+}
+
+export interface LLMSuiteStructuredChatRequest extends LLMSuiteChatCreateRequest {
+  responseSchema: Record<string, any>;
+  strict?: boolean;
+  maxRepairAttempts?: number;
+  mode?: 'fenced_json' | 'json_only' | 'repair_retry';
+  injectSchemaInstruction?: boolean;
+}
+
+export interface LLMSuiteStructuredChatResponse {
+  deploymentId: string;
+  conversationId: string;
+  parsed: Record<string, any>;
+  rawText: string;
+  validationPassed: boolean;
+  repairAttempts: number;
+  warnings: LLMSuiteClientWarning[];
+  usage?: LLMSuiteUsageInfo | null;
+  latencyMs?: number | null;
+  raw: Record<string, any>;
+}
+
+export interface LLMSuiteHealthStatus {
+  browserRunning: boolean;
+  pageLoaded: boolean;
+  authenticated: boolean;
+  identity: LLMSuiteIdentity | null;
+  modelCount: number | null;
+  lastError: string | null;
+  currentQueueDepth: number | null;
+  secondsUntilNextRequest: number | null;
+}
