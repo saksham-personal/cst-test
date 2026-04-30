@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local source data and generated index bundles
+master_companies.xlsx
+search_index/
+search_index_exact/
+index_bundles/
+index_jobs/
+index_uploads/
+active_index_bundle.json
+
+# Local user state
+lists/
+search_history.json
+screenings/
+
+# Scratch databases and logs
+*.db
+*.db-journal
+*.log
+
+# OS / editor / local tool state
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+
+# Agent / local MCP config
+.roo/
+.playwright-cli/
+
+# Launcher distribution artifacts (large binaries — distribute via GitHub Releases ZIP)
+python_runtime/
+packages/
+frontend/dist/
+tools/
+launcher_config.json
+.setup_complete
+backend_server.log
+CompanyScreenerLauncher.exe
+
+# Legacy Streamlit UI (removed — use React frontend)
+search_app.py
+search_app_impl.py
+start_app.bat
+
+# Dev/AI tooling — not for production repo
+AGENTS.md
+CLAUDE.md
+.claude/
+.roo/
+
+# Scoring extension build artifacts (keep source + dll, ignore only compiled intermediates)
+scoring_ext.o
+
+# Dev sample data and runtime state
+generate_sample.py
+requirements.txt
+active_index_bundle.json
+tmp_search_history_*.json
+
+# Local scratch tests and one-off export/debug helpers
+test_export.py
+test_export_file.py
+test_export_file2.py
+test_xlsxwriter.py
+
+# Temporary search history/debug payloads
+tmp_search_history_*.json
+tmp_validation_direct/

@@ -1,0 +1,27 @@
+{
+    "k1": 1.2,
+    "gamma": 0.2,
+    "source_weights": [2.0, 1.5, 1.2, 1.0, 1.0, 0.8, 0.8, 0.8, 0.8],
+    "source_columns": [
+        "Pitchbook Description",
+        "Pitchbook Keywords",
+        "Company Description",
+        "Factset Description",
+        "Offerings",
+        "NAICS Description",
+        "Demandbase Description",
+        "Salesforce Description",
+        "Dealogic Description"
+    ],
+    "fts5_column_names": [
+        "pitchbook_desc",
+        "pitchbook_keywords",
+        "company_desc",
+        "factset_desc",
+        "offerings",
+        "naics_desc",
+        "demandbase_desc",
+        "salesforce_desc",
+        "dealogic_desc"
+    ]
+}

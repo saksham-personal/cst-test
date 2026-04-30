@@ -1,0 +1,37 @@
+// Re-export everything from the structured api/ directory for backwards compat
+export { apiClient } from './api/client';
+export {
+  executeSearch,
+  getSearchPage,
+  validateExpression,
+  downloadBlob,
+  getMeta,
+  getHealth,
+  uploadScreeningIntake,
+  createDuplicateScreening,
+  getScreeningDetail,
+  patchScreeningFields,
+  getScreeningPdfUrl,
+  startScreening,
+} from './api/endpoints';
+export type {
+  SearchResultRow,
+  SearchPageResponse,
+  SearchExecuteRequest,
+  KeywordInput,
+  MatchSnippet,
+  ExpressionValidateRequest,
+  ExpressionValidateResponse,
+  ExportSearchRequest,
+  MetaResponse,
+  HealthResponse,
+  IndexJobDetail,
+  HistoryEntry,
+  ScreeningDocumentSummary,
+  ScreeningDuplicateItem,
+  ScreeningDetail,
+  ScreeningIntakeResponse,
+  ScreeningFieldPatchRequest,
+  ScreeningFieldPatchResponse,
+  ScreeningStartResponse,
+} from './api/types';
