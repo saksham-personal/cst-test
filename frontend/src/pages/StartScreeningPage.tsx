@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   ChevronUp,
   ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -30,6 +31,8 @@ import {
   PIPELINE_STEP_ROUTES,
   type ScreenRecord,
 } from '../stores/screenStore';
+import { listScreenings } from '../api/endpoints';
+import { toast } from 'sonner';
 
 /* ─── Types ─── */
 type SortKey = 'screenName' | 'submitterName' | 'incomingDate' | 'deadlineDate';
@@ -58,7 +61,7 @@ function fmtDate(iso: string) {
 /* ─── Component ─── */
 export function StartScreeningPage() {
   const navigate = useNavigate();
-  const { screens, setActiveScreen, removeScreen } = useScreenStore();
+  const { screens, setActiveScreen, removeScreen, syncScreenings } = useScreenStore();
 
   /* Sub‑view state */
   const [view, setView] = useState<'choose' | 'existing'>('choose');
@@ -68,10 +71,30 @@ export function StartScreeningPage() {
   const [sortKey, setSortKey] = useState<SortKey>('incomingDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
+  const [loadingScreens, setLoadingScreens] = useState(false);
 
   /* Dialogs */
   const [restoreTarget, setRestoreTarget] = useState<ScreenRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ScreenRecord | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingScreens(true);
+    listScreenings()
+      .then((data) => {
+        if (cancelled) return;
+        syncScreenings(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Failed to load screens from the database.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingScreens(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [syncScreenings]);
 
   /* ── Derived filtered & sorted list ── */
   const filteredScreens = useMemo(() => {
@@ -113,7 +136,12 @@ export function StartScreeningPage() {
   const handleConfirmRestore = () => {
     if (!restoreTarget) return;
     setActiveScreen(restoreTarget);
-    const route = PIPELINE_STEP_ROUTES[restoreTarget.pipelineStep] ?? '/search';
+    const routeBase = PIPELINE_STEP_ROUTES[restoreTarget.pipelineStep] ?? '/search';
+    const route = restoreTarget.source === 'screenings-db' && routeBase === '/screenings/new'
+      ? `/screenings/${restoreTarget.screeningId ?? restoreTarget.id}`
+      : restoreTarget.source === 'screenings-db' && routeBase === '/criteria-analysis'
+        ? `/criteria-analysis/${restoreTarget.screeningId ?? restoreTarget.id}`
+        : routeBase;
     setRestoreTarget(null);
     navigate(route);
   };
@@ -155,14 +183,14 @@ export function StartScreeningPage() {
             {/* Select Existing */}
             <button
               onClick={() => setView('existing')}
-              className="group w-full rounded-2xl border-2 border-border bg-surface-0 p-8 text-left transition-all hover:border-brand hover:shadow-lg hover:shadow-brand/5 hover:scale-[1.01]"
+              className="group w-full cursor-pointer rounded-2xl border-2 border-border bg-surface-0 p-8 text-left hover:border-brand hover:shadow-lg hover:shadow-brand/5"
             >
               <div className="flex items-center gap-4">
-                <div className="size-14 rounded-xl bg-brand/10 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
+                <div className="size-14 rounded-xl bg-brand/10 flex items-center justify-center shrink-0 group-hover:bg-brand/20">
                   <FolderOpen className="size-7 text-brand" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-foreground group-hover:text-brand transition-colors">
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-brand">
                     Select Existing Screen
                   </h3>
                   <p className="text-sm text-text-secondary mt-1">
@@ -184,14 +212,14 @@ export function StartScreeningPage() {
             {/* Start New */}
             <button
               onClick={() => navigate('/screenings/new')}
-              className="group w-full rounded-2xl border-2 border-border bg-surface-0 p-8 text-left transition-all hover:border-emerald-500 hover:shadow-lg hover:shadow-emerald-500/5 hover:scale-[1.01]"
+              className="group w-full cursor-pointer rounded-2xl border-2 border-border bg-surface-0 p-8 text-left hover:border-emerald-500 hover:shadow-lg hover:shadow-emerald-500/5"
             >
               <div className="flex items-center gap-4">
-                <div className="size-14 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+                <div className="size-14 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20">
                   <PlusCircle className="size-7 text-emerald-600" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-foreground group-hover:text-emerald-600 transition-colors">
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-emerald-600">
                     Start a New Screen
                   </h3>
                   <p className="text-sm text-text-secondary mt-1">
@@ -221,7 +249,7 @@ export function StartScreeningPage() {
       </PageHeader>
 
       {/* Search bar */}
-      <div className="px-6 pt-5 pb-3 shrink-0">
+      <div className="px-6 pt-5 pb-3 shrink-0 flex items-center justify-between gap-4">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-tertiary pointer-events-none" />
           <Input
@@ -231,6 +259,11 @@ export function StartScreeningPage() {
             className="pl-10 bg-surface-0 h-10"
           />
         </div>
+        {loadingScreens && (
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Loader2 className="size-4 animate-spin text-brand" /> Loading screen database…
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -247,7 +280,7 @@ export function StartScreeningPage() {
                 ].map(({ key, label }) => (
                   <th
                     key={key}
-                    className="text-left px-4 py-3 font-semibold text-text-secondary cursor-pointer select-none hover:text-foreground transition-colors"
+                    className="text-left px-4 py-3 font-semibold text-text-secondary cursor-pointer select-none hover:text-foreground"
                     onClick={() => toggleSort(key)}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -279,7 +312,7 @@ export function StartScreeningPage() {
                   <tr
                     key={screen.id}
                     className={cn(
-                      'border-b last:border-0 transition-colors cursor-pointer',
+                      'border-b last:border-0 cursor-pointer',
                       selectedScreenId === screen.id ? 'bg-brand/10' : 'hover:bg-brand/[0.03]',
                     )}
                     onClick={() => setSelectedScreenId(screen.id)}

@@ -28,20 +28,13 @@ router = APIRouter(prefix="/lists", tags=["lists"])
     "",
     response_model=ListCollectionResponse,
     summary="List saved company lists",
-    description="Return summaries for every persisted list on disk.",
-)
-def list_lists(service: ListsService = Depends(get_lists_service)) -> ListCollectionResponse:
-    return service.list_lists()
-
-
-@router.get(
-    "",
-    response_model=ListCollectionResponse,
-    summary="List saved company lists",
     description="Return summaries for every persisted list on disk, optionally filtered by screening id.",
 )
-def list_lists_filtered(
-    screening_id: str | None = Query(default=None, description="Optional screening id to filter lists by."),
+def list_lists(
+    screening_id: str | None = Query(
+        default=None,
+        description="Optional screening id to filter lists by. Use __none__ for lists without an associated screen.",
+    ),
     service: ListsService = Depends(get_lists_service),
 ) -> ListCollectionResponse:
     return service.list_lists(screening_id)

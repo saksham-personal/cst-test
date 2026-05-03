@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { ScreeningDetail, ScreeningSummary } from '../api/types';
 
 export interface ScreenRecord {
   id: string;
@@ -11,6 +12,10 @@ export interface ScreenRecord {
   pipelineStatus: 'active' | 'paused' | 'completed';
   pipelineStep: string;        // e.g. "Criteria Analysis", "LLM Screening", "Form Intake"
   isOngoing: boolean;
+  source: 'screenings-db' | 'local';
+  screeningId?: string;
+  originalFilename?: string;
+  currFinalCriteria?: string | null;
 }
 
 interface ScreenState {
@@ -26,12 +31,49 @@ interface ScreenState {
   addScreen: (screen: ScreenRecord) => void;
   removeScreen: (id: string) => void;
   updateScreen: (id: string, patch: Partial<ScreenRecord>) => void;
+  syncScreenings: (screenings: ScreeningSummary[]) => void;
+  upsertScreeningDetail: (screening: ScreeningDetail) => void;
+}
+
+function displayScreeningName(screening: ScreeningSummary | ScreeningDetail): string {
+  return screening.screen_name || screening.original_filename || screening.id;
+}
+
+function pipelineStepName(step: number, status: string): string {
+  if (step <= 1) return 'Form Intake';
+  if (step <= 4) return 'Criteria Analysis';
+  if (status === 'LLM_SCREENING' || step >= 6) return 'LLM Screening';
+  if (step === 5) return 'Search';
+  return 'Criteria Analysis';
+}
+
+function toScreenRecord(screening: ScreeningSummary | ScreeningDetail): ScreenRecord {
+  const anyScreening = screening as ScreeningDetail;
+  const editedFields = anyScreening.edited_fields || {};
+  const incomingDate = anyScreening.inbound_date || screening.updated_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const deadlineDate = anyScreening.target_date || incomingDate;
+  return {
+    id: screening.id,
+    screeningId: screening.id,
+    screenName: displayScreeningName(screening),
+    submitterName: editedFields.submitter_name || 'Screen database',
+    incomingDate,
+    deadlineDate,
+    investmentCriteria: editedFields.investment_criteria || anyScreening.curr_final_criteria || 'No criteria saved yet.',
+    pipelineStatus: screening.status === 'screening_started' ? 'active' : 'paused',
+    pipelineStep: pipelineStepName(screening.pipeline_step, screening.pipeline_status),
+    isOngoing: screening.status !== 'screening_started' || screening.is_active,
+    source: 'screenings-db',
+    originalFilename: screening.original_filename,
+    currFinalCriteria: anyScreening.curr_final_criteria ?? null,
+  };
 }
 
 /* ── Mock seed data ── */
 const SEED_SCREENS: ScreenRecord[] = [
   {
     id: 'scr-001',
+    source: 'local',
     screenName: 'Clean Energy Fund II',
     submitterName: 'Sarah Chen',
     incomingDate: '2026-04-15',
@@ -43,6 +85,7 @@ const SEED_SCREENS: ScreenRecord[] = [
   },
   {
     id: 'scr-002',
+    source: 'local',
     screenName: 'Healthcare Growth Equity',
     submitterName: 'James Rodriguez',
     incomingDate: '2026-04-10',
@@ -54,6 +97,7 @@ const SEED_SCREENS: ScreenRecord[] = [
   },
   {
     id: 'scr-003',
+    source: 'local',
     screenName: 'European SaaS Buyout',
     submitterName: 'Laura Müller',
     incomingDate: '2026-04-20',
@@ -65,6 +109,7 @@ const SEED_SCREENS: ScreenRecord[] = [
   },
   {
     id: 'scr-004',
+    source: 'local',
     screenName: 'Infrastructure Debt Screen',
     submitterName: 'Raj Patel',
     incomingDate: '2026-03-28',
@@ -76,6 +121,7 @@ const SEED_SCREENS: ScreenRecord[] = [
   },
   {
     id: 'scr-005',
+    source: 'local',
     screenName: 'Asia-Pacific FinTech',
     submitterName: 'Yuki Tanaka',
     incomingDate: '2026-04-25',
@@ -87,6 +133,7 @@ const SEED_SCREENS: ScreenRecord[] = [
   },
   {
     id: 'scr-006',
+    source: 'local',
     screenName: 'US Mid-Market Industrials',
     submitterName: 'Michael Thompson',
     incomingDate: '2026-04-02',
@@ -98,6 +145,7 @@ const SEED_SCREENS: ScreenRecord[] = [
   },
   {
     id: 'scr-007',
+    source: 'local',
     screenName: 'ESG Impact Fund',
     submitterName: 'Amara Okafor',
     incomingDate: '2026-04-18',
@@ -144,6 +192,30 @@ export const useScreenStore = create<ScreenState>()(
               ? { ...state.activeScreen, ...patch }
               : state.activeScreen,
         })),
+
+      syncScreenings: (screenings) =>
+        set((state) => {
+          const dbRecords = screenings.map(toScreenRecord);
+          const dbIds = new Set(dbRecords.map((record) => record.id));
+          const localRecords = state.screens.filter(
+            (screen) => screen.source !== 'screenings-db' && !dbIds.has(screen.id),
+          );
+          const screens = [...dbRecords, ...localRecords];
+          const activeScreen = state.activeScreen && dbIds.has(state.activeScreen.id)
+            ? screens.find((screen) => screen.id === state.activeScreen?.id) ?? state.activeScreen
+            : state.activeScreen;
+          return { screens, activeScreen };
+        }),
+
+      upsertScreeningDetail: (screening) =>
+        set((state) => {
+          const record = toScreenRecord(screening);
+          const screens = [record, ...state.screens.filter((screen) => screen.id !== record.id)];
+          return {
+            screens,
+            activeScreen: state.activeScreen?.id === record.id ? record : state.activeScreen,
+          };
+        }),
     }),
     {
       name: 'company-screener-screens',

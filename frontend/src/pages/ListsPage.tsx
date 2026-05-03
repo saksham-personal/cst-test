@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -9,6 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { Radio } from '@base-ui/react/radio';
+import { RadioGroup } from '@base-ui/react/radio-group';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +28,8 @@ import {
   Download,
   Loader2,
   RefreshCw,
+  Sparkles,
+  RotateCcw,
 } from 'lucide-react';
 import {
   getLists,
@@ -32,14 +37,17 @@ import {
   getListCompanyDetail,
   createList,
   deleteList,
+  generateLLMScreeningPrompts,
   listScreenings,
   removeCompaniesFromList,
 } from '../api/endpoints';
-import type { ListSummary, ListCompanyEntry, ListCompanyDetail } from '../api/endpoints';
+import type { ListSummary, ListCompanyEntry, ListCompanyDetail, ListDetail } from '../api/endpoints';
 import type { ScreeningSummary } from '../api/types';
 import { toast } from 'sonner';
 import { ExportDialog } from '../components/search/ExportDialog';
 import { ListCompanyDetailDrawer } from '../components/lists/ListCompanyDetailDrawer';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
+import { cn } from '../lib/utils';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import type { ColDef, SelectionChangedEvent, GridReadyEvent, GridApi, RowClickedEvent } from 'ag-grid-community';
@@ -74,17 +82,31 @@ function shouldIgnoreRowClick(target: EventTarget | null): boolean {
   );
 }
 
+function isLLMGeneratedListName(name: string): boolean {
+  return /(?:^|[_\s-])listafterllm$/i.test(name) || /_listafterllm$/i.test(name) || /llm/i.test(name);
+}
+
 export function ListsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const ALL_SCREENS_VALUE = '__all__';
+  const NO_SCREEN_VALUE = '__none__';
+  const ASSOCIATED_SCREENS_VALUE = '__associated__';
+  const [filterAssociation, setFilterAssociation] = useState<'none' | 'associated'>('associated');
+  const [createAssociation, setCreateAssociation] = useState<'none' | 'associated'>('none');
+  const [createScreeningId, setCreateScreeningId] = useState<string>('');
   const [filterText, setFilterText] = useState('');
   const [listSummaries, setListSummaries] = useState<ListSummary[]>([]);
   const [screeningOptions, setScreeningOptions] = useState<ScreeningSummary[]>([]);
-  const [selectedScreeningId, setSelectedScreeningId] = useState<string | null>(null);
+  const [selectedScreeningId, setSelectedScreeningId] = useState<string>(ALL_SCREENS_VALUE);
   const [selectedList, setSelectedList] = useState<string>('');
+  const [selectedListDetail, setSelectedListDetail] = useState<ListDetail | null>(null);
   const [listCompanies, setListCompanies] = useState<ListCompanyEntry[]>([]);
   const [loadingLists, setLoadingLists] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingCompanyDetail, setLoadingCompanyDetail] = useState(false);
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
+  const [promptGenerationError, setPromptGenerationError] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [selectedCompanyDetail, setSelectedCompanyDetail] = useState<ListCompanyDetail | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -102,7 +124,29 @@ export function ListsPage() {
   const companyDetailCacheRef = useRef<Record<string, ListCompanyDetail>>({});
   const companyDetailRequestRef = useRef(0);
 
-  const loadLists = useCallback(async (screeningId: string | null = selectedScreeningId) => {
+  const listFilterParam = filterAssociation === 'none'
+    ? NO_SCREEN_VALUE
+    : selectedScreeningId === ALL_SCREENS_VALUE
+      ? ASSOCIATED_SCREENS_VALUE
+      : selectedScreeningId;
+
+  const formatTooltipDate = (raw?: string): string => {
+    if (!raw) return '-';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    const datePart = date.toLocaleDateString(undefined, {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const timePart = date.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return `${datePart} at ${timePart}`;
+  };
+
+  const loadLists = useCallback(async (screeningId: string | null = listFilterParam) => {
     setLoadingLists(true);
     try {
       const data = await getLists(screeningId);
@@ -112,7 +156,7 @@ export function ListsPage() {
     } finally {
       setLoadingLists(false);
     }
-  }, [selectedScreeningId]);
+  }, [listFilterParam]);
 
   const loadScreeningOptions = useCallback(async () => {
     try {
@@ -133,9 +177,11 @@ export function ListsPage() {
     companyDetailRequestRef.current += 1;
     try {
       const detail = await getListDetail(name);
+      setSelectedListDetail(detail);
       setListCompanies(Array.isArray(detail?.companies) ? detail.companies : []);
     } catch {
       toast.error('Failed to load list');
+      setSelectedListDetail(null);
       setListCompanies([]);
     } finally {
       setLoadingDetail(false);
@@ -147,12 +193,22 @@ export function ListsPage() {
   }, [loadScreeningOptions]);
 
   useEffect(() => {
-    void loadLists(selectedScreeningId);
-  }, [loadLists, selectedScreeningId]);
+    void loadLists(listFilterParam);
+  }, [loadLists, listFilterParam]);
+
+  useEffect(() => {
+    const navState = (location.state as { openListName?: string } | null) ?? null;
+    if (!navState?.openListName || selectedList === navState.openListName) return;
+    setFilterAssociation('associated');
+    setSelectedScreeningId(ALL_SCREENS_VALUE);
+    setSelectedList(navState.openListName);
+    void loadDetail(navState.openListName);
+  }, [location.state, selectedList]);
 
   useEffect(() => {
     if (selectedList && !listSummaries.some((summary) => summary.name === selectedList)) {
       setSelectedList('');
+      setSelectedListDetail(null);
       setListCompanies([]);
       setSelectedCompanyDetail(null);
       setDrawerOpen(false);
@@ -167,7 +223,86 @@ export function ListsPage() {
 
   const handleSelectList = (name: string) => {
     setSelectedList(name);
+    setPromptGenerationError(null);
     loadDetail(name);
+  };
+
+  const selectedSummary = useMemo(
+    () => listSummaries.find((summary) => summary.name === selectedList) ?? null,
+    [listSummaries, selectedList],
+  );
+
+  const selectedListScreeningId = selectedListDetail?.screening_id ?? selectedSummary?.screening_id ?? null;
+  const selectedListScreenName = selectedListDetail?.screen_name ?? selectedSummary?.screen_name ?? null;
+  const selectedScreenAssociationLabel = selectedListScreenName || (selectedListScreeningId ? selectedListScreeningId : 'None');
+  const currentFilterLabel = filterAssociation === 'none'
+    ? 'Lists with no associated screen'
+    : selectedScreeningId === ALL_SCREENS_VALUE
+      ? 'All screen-associated lists'
+      : screeningOptions.find((screen) => screen.id === selectedScreeningId)?.screen_name
+        || screeningOptions.find((screen) => screen.id === selectedScreeningId)?.original_filename
+        || selectedScreeningId;
+
+  const handleFilterAssociationChange = (value: string) => {
+    const next = value === 'none' ? 'none' : 'associated';
+    setFilterAssociation(next);
+    setSelectedScreeningId(ALL_SCREENS_VALUE);
+    setSelectedList('');
+    setSelectedListDetail(null);
+    setListCompanies([]);
+    setSelectedCompanyDetail(null);
+    setDrawerOpen(false);
+  };
+
+  const handleScreenFilterChange = (value: string | null) => {
+    setSelectedScreeningId(value || ALL_SCREENS_VALUE);
+    setSelectedList('');
+    setSelectedListDetail(null);
+    setListCompanies([]);
+    setSelectedCompanyDetail(null);
+    setDrawerOpen(false);
+  };
+
+  const handleRunLLMScreening = async () => {
+    if (!selectedList) return;
+    setPromptGenerationError(null);
+    if (!selectedListScreeningId) {
+      toast.info('Screen Associated is None. Fill the prompts before running LLM Screening.');
+      navigate('/llm-screening', {
+        state: {
+          flow: 'platform',
+          listName: selectedList,
+          screeningId: null,
+          prompts: { Yes: '', No: '', Maybe: '', Rationale: '' },
+          needsPromptFill: true,
+        },
+      });
+      return;
+    }
+
+    setGeneratingPrompts(true);
+    const toastId = toast.loading(`Generating LLM screening prompts for "${selectedList}"…`);
+    try {
+      const response = await generateLLMScreeningPrompts({
+        screening_id: selectedListScreeningId,
+        rationale_enabled: true,
+      });
+      toast.success('Generated Yes/No/Maybe and Rationale prompts. Review and edit prompts before running.', { id: toastId });
+      navigate('/llm-screening', {
+        state: {
+          flow: 'platform',
+          listName: selectedList,
+          screeningId: selectedListScreeningId,
+          prompts: response.prompts,
+        },
+      });
+    } catch (err: any) {
+      const message = err?.response?.data?.detail || err?.message || 'LLM prompt generation failed or timed out.';
+      setPromptGenerationError(message);
+      toast.error(`${message} Use Try again.`, { id: toastId });
+    } finally {
+      setGeneratingPrompts(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -175,12 +310,14 @@ export function ListsPage() {
     if (!name) return;
     setCreating(true);
     try {
-      const linkedScreen = screeningOptions.find((screen) => screen.id === selectedScreeningId) ?? null;
+      const linkedScreen = createAssociation === 'associated'
+        ? screeningOptions.find((screen) => screen.id === createScreeningId) ?? null
+        : null;
       await createList(name, linkedScreen?.id ?? null, linkedScreen?.screen_name ?? null);
       toast.success(`Created "${name}"`);
       setNewName('');
       setCreateOpen(false);
-      await loadLists(selectedScreeningId);
+      await loadLists(listFilterParam);
       handleSelectList(name);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to create list');
@@ -200,7 +337,8 @@ export function ListsPage() {
       setSelectedCompanyDetail(null);
       setDrawerOpen(false);
       setDeleteOpen(false);
-      await loadLists(selectedScreeningId);
+      setSelectedListDetail(null);
+      await loadLists(listFilterParam);
     } catch {
       toast.error('Failed to delete list');
     } finally {
@@ -349,7 +487,7 @@ export function ListsPage() {
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => { void loadLists(selectedScreeningId); }}
+              onClick={() => { void loadLists(listFilterParam); }}
               disabled={loadingLists}
               title="Refresh"
             >
@@ -361,22 +499,42 @@ export function ListsPage() {
             <label className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
               Filter by screen
             </label>
-            <Select
-              value={selectedScreeningId ?? ALL_SCREENS_VALUE}
-              onValueChange={(value) => setSelectedScreeningId(value === ALL_SCREENS_VALUE ? null : value)}
+            <RadioGroup
+              value={filterAssociation}
+              onValueChange={handleFilterAssociationChange}
+              className="grid grid-cols-1 gap-1.5"
             >
-              <SelectTrigger className="w-full h-9 bg-surface-0 items-center text-left">
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_SCREENS_VALUE}>None</SelectItem>
-                {screeningOptions.map((screen) => (
-                  <SelectItem key={screen.id} value={screen.id}>
-                    {screen.screen_name || screen.original_filename || screen.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-surface-0 px-2 py-1.5 text-xs">
+                <Radio.Root value="none" className="flex size-4 items-center justify-center rounded-full border border-border bg-surface-0 data-[checked]:border-brand">
+                  <Radio.Indicator className="size-2 rounded-full bg-brand" />
+                </Radio.Root>
+                No Screen Associated
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-surface-0 px-2 py-1.5 text-xs">
+                <Radio.Root value="associated" className="flex size-4 items-center justify-center rounded-full border border-border bg-surface-0 data-[checked]:border-brand">
+                  <Radio.Indicator className="size-2 rounded-full bg-brand" />
+                </Radio.Root>
+                Screen Associated
+              </label>
+            </RadioGroup>
+            {filterAssociation === 'associated' && (
+              <Select value={selectedScreeningId} onValueChange={handleScreenFilterChange}>
+                <SelectTrigger className="w-full h-9 bg-surface-0 items-center text-left">
+                  <SelectValue placeholder="All associated screens" />
+                </SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  <SelectItem value={ALL_SCREENS_VALUE}>All associated screens</SelectItem>
+                  {screeningOptions.map((screen) => (
+                    <SelectItem key={screen.id} value={screen.id}>
+                      {screen.screen_name || screen.original_filename || screen.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="rounded-md bg-surface-1 px-2 py-1 text-[11px] text-text-tertiary">
+              Showing: <span className="font-medium text-text-secondary">{currentFilterLabel}</span>
+            </div>
           </div>
 
           <Button
@@ -399,41 +557,60 @@ export function ListsPage() {
               </div>
             ) : (
               <ul className="space-y-0.5">
-                {listSummaries.map((summary) => (
+                {listSummaries.map((summary) => {
+                  const isLLMGenerated = isLLMGeneratedListName(summary.name);
+                  return (
                   <li key={summary.name}>
-                    <button
-                      onClick={() => handleSelectList(summary.name)}
-                      className={
-                        'w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ' +
-                        (selectedList === summary.name
-                          ? 'bg-brand/10 text-brand font-medium'
-                          : 'text-text-primary hover:bg-surface-1')
-                      }
-                    >
-                      <span className="flex items-center gap-2 min-w-0">
-                        <ListIcon className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{summary.name}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5 shrink-0">
-                        {summary.screen_name && (
-                          <span className="max-w-[92px] truncate rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-tertiary">
-                            {summary.screen_name}
-                          </span>
-                        )}
-                        <span
-                          className={
-                            'text-[10px] font-mono tabular-nums shrink-0 px-1.5 py-0.5 rounded ' +
-                            (selectedList === summary.name
-                              ? 'bg-brand/20'
-                              : 'bg-surface-2 text-text-tertiary')
-                          }
-                        >
-                          {summary.count}
-                        </span>
-                      </span>
-                    </button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger render={
+                            <button
+                              onClick={() => handleSelectList(summary.name)}
+                              className={
+                                'w-full cursor-pointer flex items-center justify-between gap-2 px-2 py-2 rounded-lg text-sm border border-transparent ' +
+                                (selectedList === summary.name
+                                  ? isLLMGenerated
+                                    ? 'bg-blue-600/10 text-blue-700 font-medium border-blue-300'
+                                    : 'bg-brand/10 text-brand font-medium border-brand/20'
+                                  : isLLMGenerated
+                                    ? 'text-blue-700 bg-blue-50/80 hover:bg-blue-100 hover:border-blue-300'
+                                    : 'text-text-primary hover:bg-surface-1 hover:border-border')
+                              }
+                            />
+                          }>
+                            <span className="flex items-center gap-2 min-w-0">
+                              {isLLMGenerated ? <Sparkles className="h-3.5 w-3.5 shrink-0" /> : <ListIcon className="h-3.5 w-3.5 shrink-0" />}
+                              <span className="truncate">{summary.name}</span>
+                            </span>
+                            <span
+                              className={
+                                'text-[10px] font-mono tabular-nums shrink-0 px-1.5 py-0.5 rounded ' +
+                                (selectedList === summary.name
+                                  ? 'bg-brand/20'
+                                  : 'bg-surface-2 text-text-tertiary')
+                              }
+                            >
+                              {summary.count}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            className={cn(
+                              "max-w-xs flex-col items-start text-left leading-5",
+                              isLLMGenerated && "border border-blue-500 bg-blue-700 text-white shadow-lg",
+                            )}
+                            arrowClassName={isLLMGenerated ? "bg-blue-700 fill-blue-700" : undefined}
+                          >
+                            <div className="font-semibold text-sm">{summary.name}</div>
+                            {isLLMGenerated && <div className="text-[11px] font-bold uppercase tracking-wide text-blue-100">LLM generated list</div>}
+                            <div>Screen Associated: {summary.screen_name || 'None'}</div>
+                            <div>Created: {formatTooltipDate(summary.created_at)}</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -446,14 +623,24 @@ export function ListsPage() {
               {selectedList ? (
                 <>
                   <div className="text-sm font-semibold text-text-primary truncate">{selectedList}</div>
-                  <div className="text-xs text-text-tertiary">
-                    {listCompanies.length.toLocaleString()} compan{listCompanies.length === 1 ? 'y' : 'ies'}
+                  <div className="text-xs text-text-tertiary flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>{listCompanies.length.toLocaleString()} compan{listCompanies.length === 1 ? 'y' : 'ies'}</span>
+                    <span>·</span>
+                    <span>Screen Associated: <span className="font-medium text-text-primary">{selectedScreenAssociationLabel}</span></span>
                     {selectedKeys.size > 0 && (
                       <>
-                        {' '}· <span className="text-brand font-medium">{selectedKeys.size} selected</span>
+                        <span>·</span> <span className="text-brand font-medium">{selectedKeys.size} selected</span>
                       </>
                     )}
                   </div>
+                  {promptGenerationError && (
+                    <div className="mt-2 flex items-center gap-2 rounded-md border border-danger/20 bg-danger/5 px-2 py-1 text-xs text-danger">
+                      <span className="truncate">{promptGenerationError}</span>
+                      <Button variant="outline" size="xs" onClick={handleRunLLMScreening} disabled={generatingPrompts}>
+                        <RotateCcw className="mr-1 size-3" /> Try again
+                      </Button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="text-sm text-text-tertiary italic">Select a list to view companies.</div>
@@ -472,6 +659,16 @@ export function ListsPage() {
 
             {selectedList && (
               <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRunLLMScreening}
+                  disabled={generatingPrompts}
+                  className="text-brand hover:bg-brand/10"
+                >
+                  {generatingPrompts ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Sparkles className="size-4 mr-1" />}
+                  Run LLM Screening
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -503,7 +700,7 @@ export function ListsPage() {
 
           <div className="flex-1 min-h-0 border rounded-lg bg-card shadow-sm overflow-hidden relative">
             {loadingDetail && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-surface-0/70 backdrop-blur-[1px] text-text-secondary">
+              <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-surface-0/80 text-text-secondary">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading companies…
               </div>
             )}
@@ -544,11 +741,20 @@ export function ListsPage() {
       />
 
       {/* Create list dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (open) {
+            setCreateAssociation('none');
+            setCreateScreeningId('');
+          }
+        }}
+      >
         <DialogContent showCloseButton className="!max-w-md !w-[420px]">
           <DialogHeader>
             <DialogTitle>Create new list</DialogTitle>
-            <DialogDescription>Give the list a short, memorable name.</DialogDescription>
+            <DialogDescription>Give the list a short name and choose whether it is associated with a screen.</DialogDescription>
           </DialogHeader>
           <Input
             autoFocus
@@ -559,11 +765,46 @@ export function ListsPage() {
               if (e.key === 'Enter') handleCreate();
             }}
           />
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Screen association</label>
+            <RadioGroup
+              value={createAssociation}
+              onValueChange={(value) => setCreateAssociation(value === 'associated' ? 'associated' : 'none')}
+              className="grid grid-cols-2 gap-2"
+            >
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-surface-0 px-3 py-2 text-sm">
+                <Radio.Root value="none" className="flex size-4 items-center justify-center rounded-full border border-border bg-surface-0 data-[checked]:border-brand">
+                  <Radio.Indicator className="size-2 rounded-full bg-brand" />
+                </Radio.Root>
+                No Screen
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-surface-0 px-3 py-2 text-sm">
+                <Radio.Root value="associated" className="flex size-4 items-center justify-center rounded-full border border-border bg-surface-0 data-[checked]:border-brand">
+                  <Radio.Indicator className="size-2 rounded-full bg-brand" />
+                </Radio.Root>
+                Existing Screen
+              </label>
+            </RadioGroup>
+            {createAssociation === 'associated' && (
+              <Select value={createScreeningId} onValueChange={(value) => setCreateScreeningId(value || '')}>
+                <SelectTrigger className="w-full h-9 bg-surface-0 items-center text-left">
+                  <SelectValue placeholder="Choose an existing screen" />
+                </SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  {screeningOptions.map((screen) => (
+                    <SelectItem key={screen.id} value={screen.id}>
+                      {screen.screen_name || screen.original_filename || screen.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
+            <Button onClick={handleCreate} disabled={creating || !newName.trim() || (createAssociation === 'associated' && !createScreeningId)}>
               {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Create
             </Button>

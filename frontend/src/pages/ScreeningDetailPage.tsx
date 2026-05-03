@@ -15,6 +15,7 @@ import { ScreeningPdfPreview } from '../components/screenings/ScreeningPdfPrevie
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
+import { useScreenStore } from '../stores/screenStore';
 
 export function ScreeningDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +27,7 @@ export function ScreeningDetailPage() {
   const [isStarting, setIsStarting] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(true);
   const [savingByField, setSavingByField] = useState<Record<string, boolean>>({});
+  const upsertScreeningDetail = useScreenStore((state) => state.upsertScreeningDetail);
 
   const pdfUrl = useMemo(() => (screening ? getScreeningPdfUrl(screening.id) : ''), [screening]);
 
@@ -35,12 +37,13 @@ export function ScreeningDetailPage() {
     try {
       const detail = await getScreeningDetail(id);
       setScreening(detail);
+      upsertScreeningDetail(detail);
       setScreenNameInput(detail.screen_name ?? '');
       setWebsiteInput(detail.website ?? '');
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [id, upsertScreeningDetail]);
 
   useEffect(() => {
     void loadScreening();

@@ -714,7 +714,7 @@ export function ResultsGrid({
       )}
 
       {isLoading && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface-0/70 backdrop-blur-[1px] pointer-events-none">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface-0/80 pointer-events-none">
           <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-0 border border-border shadow-md">
             <Loader2 className="h-4 w-4 animate-spin text-brand" />
             <span className="text-sm font-medium text-text-primary">Searching…</span>

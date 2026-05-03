@@ -89,12 +89,16 @@ class ListsRepository:
         screening_filter = _normalize_text(screening_id)
         with self._get_connection() as conn:
             query = '''
-                SELECT l.name, l.screening_id, l.screen_name, l.updated_at, COUNT(c.primary_key_value) as count
+                SELECT l.name, l.screening_id, l.screen_name, l.created_at, l.updated_at, COUNT(c.primary_key_value) as count
                 FROM saved_lists l
                 LEFT JOIN list_companies c ON l.id = c.list_id
             '''
             params: list[str] = []
-            if screening_filter:
+            if screening_filter == "__none__":
+                query += " WHERE l.screening_id IS NULL OR TRIM(l.screening_id) = ''"
+            elif screening_filter == "__associated__":
+                query += " WHERE l.screening_id IS NOT NULL AND TRIM(l.screening_id) <> ''"
+            elif screening_filter:
                 query += ' WHERE l.screening_id = ?'
                 params.append(screening_filter)
             query += ' GROUP BY l.id ORDER BY LOWER(l.name)'
@@ -108,6 +112,7 @@ class ListsRepository:
                 "count": row["count"],
                 "screening_id": row["screening_id"],
                 "screen_name": row["screen_name"],
+                "created_at": row["created_at"],
                 "updated_at": row["updated_at"]
             })
         return summaries

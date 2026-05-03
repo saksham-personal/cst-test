@@ -144,6 +144,7 @@ class ScreeningsService:
             pipeline_step=int(screening.get("pipeline_step") or self.STEP_FORM_UPLOADED),
             pipeline_status=str(screening.get("pipeline_status") or self.PIPELINE_STATUS_FORM_UPLOADED),
             is_active=bool(screening.get("is_active", False)),
+            curr_final_criteria=self._clean_optional_text(screening.get("curr_final_criteria")),
             original_filename=str(screening.get("original_filename", "")).strip(),
             updated_at=str(screening.get("updated_at", "")).strip(),
         )
@@ -170,6 +171,7 @@ class ScreeningsService:
             pipeline_step=int(screening.get("pipeline_step") or self.STEP_FORM_UPLOADED),
             pipeline_status=str(screening.get("pipeline_status") or self.PIPELINE_STATUS_FORM_UPLOADED),
             is_active=bool(screening.get("is_active", False)),
+            curr_final_criteria=self._clean_optional_text(screening.get("curr_final_criteria")),
             original_filename=str(screening.get("original_filename", "")).strip(),
             pdf_sha256=str(screening.get("pdf_sha256", "")).strip(),
             created_at=str(screening.get("created_at", "")).strip(),
@@ -329,6 +331,7 @@ class ScreeningsService:
                 "is_active": False,
                 "llm_request_json": None,
                 "llm_response_json": None,
+                "curr_final_criteria": None,
                 "created_at": now,
                 "updated_at": now,
             }
@@ -373,6 +376,7 @@ class ScreeningsService:
                 "is_active": False,
                 "llm_request_json": None,
                 "llm_response_json": None,
+                "curr_final_criteria": None,
                 "created_at": now,
                 "updated_at": now,
             }
@@ -381,6 +385,16 @@ class ScreeningsService:
 
     def get_screening(self, screening_id: str) -> ScreeningDetail:
         return self._detail(self._load_screening_or_raise(screening_id))
+
+    def save_current_final_criteria(self, screening_id: str, criteria_markdown: str) -> ScreeningDetail:
+        screening = self._load_screening_or_raise(screening_id)
+        updated = dict(screening)
+        updated["curr_final_criteria"] = self._clean_optional_text(criteria_markdown)
+        updated["updated_at"] = _now_iso()
+        saved = self.repo.update_screening(updated)
+        if saved is None:  # pragma: no cover - defensive path
+            raise NotFoundError(f"Screening '{screening_id}' not found.")
+        return self._detail(saved)
 
     def patch_screening(self, screening_id: str, payload: ScreeningFieldPatchRequest) -> ScreeningFieldPatchResponse:
         screening = self._load_screening_or_raise(screening_id)

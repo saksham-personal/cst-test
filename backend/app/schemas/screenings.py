@@ -75,6 +75,7 @@ class ScreeningSummary(BaseModel):
     pipeline_step: int = Field(default=1, description="Current pipeline step integer.")
     pipeline_status: str = Field(default="FORM_UPLOADED", description="Current pipeline status string.")
     is_active: bool = Field(default=False, description="Whether this screening is the active screening.")
+    curr_final_criteria: str | None = Field(default=None, description="Latest final criteria markdown saved from criteria analysis.")
     original_filename: str = Field(default="", description="Original uploaded PDF filename.")
     updated_at: str = Field(default="", description="ISO timestamp when the screening was last updated.")
 
@@ -116,6 +117,7 @@ class ScreeningDetail(BaseModel):
     pipeline_step: int = Field(default=1, description="Current pipeline step integer.")
     pipeline_status: str = Field(default="FORM_UPLOADED", description="Current pipeline status string.")
     is_active: bool = Field(default=False, description="Whether this screening is the active screening.")
+    curr_final_criteria: str | None = Field(default=None, description="Latest final criteria markdown saved from criteria analysis.")
     original_filename: str = Field(description="Original uploaded PDF filename.")
     pdf_sha256: str = Field(description="Document hash used for duplicate detection.")
     created_at: str = Field(default="", description="ISO timestamp when the screening was created.")

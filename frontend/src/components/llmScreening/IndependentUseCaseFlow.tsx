@@ -7,6 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { cn } from '../../lib/utils';
 import { BatchSizeControl } from './BatchSizeControl';
 import { Expand, Upload, FileCheck2, AlertCircle, Loader2, Download, ArrowLeft } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
+import { downloadBlob, getIndependentLLMOutputUrl } from '../../api/endpoints';
 
 
 const MODELS = [
@@ -17,7 +20,11 @@ const MODELS = [
 
 type IndependentState = 'select' | 'form' | 'running' | 'done';
 
-export function IndependentUseCaseFlow() {
+interface IndependentUseCaseFlowProps {
+  onActivityStart?: () => void;
+}
+ 
+export function IndependentUseCaseFlow({ onActivityStart }: IndependentUseCaseFlowProps) {
   const [state, setState] = useState<IndependentState>('select');
   const [selectedCase, setSelectedCase] = useState<string>('');
 
@@ -30,11 +37,13 @@ export function IndependentUseCaseFlow() {
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const [fileStatus, setFileStatus] = useState<'idle' | 'validating' | 'success' | 'error'>('idle');
   const [fileName, setFileName] = useState('');
+  const [fileError, setFileError] = useState('');
   const [model, setModel] = useState('');
 
   /* run */
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState(0);
+  const [downloading, setDownloading] = useState(false);
 
   const mockCases = [
     { id: '1', name: 'Vendor Analysis Q3', state: 'ongoing' },
@@ -54,6 +63,7 @@ export function IndependentUseCaseFlow() {
     setBatchSize(20);
     setFileStatus('idle');
     setFileName('');
+    setFileError('');
     setModel('');
   };
 
@@ -79,15 +89,40 @@ export function IndependentUseCaseFlow() {
     setter(val);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFileName(e.target.files[0].name);
-      setFileStatus('validating');
-      setTimeout(() => setFileStatus('success'), 1200);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setFileStatus('validating');
+    setFileError('');
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) throw new Error('No worksheets found in the uploaded dataset.');
+      const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(workbook.Sheets[sheetName], {
+        header: 1,
+        blankrows: false,
+      });
+      const headers = (rows[0] || []).map((value) => String(value ?? '').trim()).filter(Boolean);
+      if (headers.length === 0) throw new Error('Header row 1 is empty.');
+      if (headers[0].toLowerCase() !== 'index') {
+        throw new Error('Index not provided: the first column in header row 1 must be index.');
+      }
+      const inputColumnText = headers.map((header, index) => (index === 0 ? 'index' : header)).join(', ');
+      setInputCols(inputColumnText);
+      setFileStatus('success');
+      toast.success(`Validated ${file.name}. Input columns were filled from header row 1.`);
+    } catch (error: any) {
+      const message = error?.message || 'Failed to validate dataset.';
+      setFileStatus('error');
+      setFileError(message);
+      toast.error(message);
     }
   };
 
   const handleStartRun = () => {
+    onActivityStart?.();
     setState('running');
     setProgress(0);
     setErrors(0);
@@ -111,13 +146,28 @@ export function IndependentUseCaseFlow() {
   const ProgressBar = ({ value, className }: { value: number; className?: string }) => (
     <div className={cn("w-full h-4 bg-border rounded-full overflow-hidden", className)}>
       <div
-        className="h-full bg-brand rounded-full transition-all duration-300 ease-out"
+        className="h-full bg-brand rounded-full"
         style={{ width: `${Math.min(100, value)}%` }}
       />
     </div>
   );
 
   const isFormValid = useCaseName.trim() !== '' && fileStatus === 'success' && model !== '';
+
+  const handleDownloadOutput = async () => {
+    setDownloading(true);
+    try {
+      const response = await fetch(getIndependentLLMOutputUrl(useCaseName || 'Independent Use Case'));
+      if (!response.ok) throw new Error('Failed to download backend-generated output.');
+      const blob = await response.blob();
+      downloadBlob(blob, `${(useCaseName || 'Independent_Use_Case').replace(/\s+/g, '_')}_LLMExport.xlsx`);
+      toast.success('Downloaded backend-generated stub XLSX output.');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to download output.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   /* ─── RENDER ─── */
   return (
@@ -178,7 +228,7 @@ export function IndependentUseCaseFlow() {
           <div className="flex items-center gap-3 px-6 py-3 border-b bg-surface-1">
             <button
               type="button"
-              className="text-text-secondary hover:text-foreground transition-colors"
+              className="cursor-pointer text-text-secondary hover:text-foreground"
               onClick={() => setState('select')}
             >
               <ArrowLeft className="size-4" />
@@ -189,8 +239,8 @@ export function IndependentUseCaseFlow() {
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Name + Batch */}
-            <div className="grid grid-cols-[1fr_280px] gap-5 items-end">
+            {/* Name + Model + Batch */}
+            <div className="grid grid-cols-[1fr_220px_280px] gap-5 items-end">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Use Case Name</label>
                 <Input
@@ -199,6 +249,24 @@ export function IndependentUseCaseFlow() {
                   placeholder="e.g. Lead Scoring Model"
                   className="h-10 text-base"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">Model</h4>
+                <Select value={model} onValueChange={(val) => setModel(val || '')}>
+                  <SelectTrigger className="w-full h-10 bg-surface-0 items-center">
+                    <SelectValue placeholder="Select LLM Model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODELS.map(m => (
+                      <SelectItem key={m.id} value={m.id}>
+                        <div className="flex flex-col items-start text-left">
+                          <span className="font-medium text-foreground">{m.name}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase">{m.state}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Batch Size</label>
@@ -240,7 +308,7 @@ export function IndependentUseCaseFlow() {
                 />
                 <button
                   type="button"
-                  className="absolute top-2.5 right-2.5 p-1.5 rounded-md text-text-tertiary hover:text-foreground hover:bg-surface-2 transition-colors z-10"
+                  className="absolute top-2.5 right-2.5 cursor-pointer p-1.5 rounded-md text-text-tertiary hover:text-foreground hover:bg-surface-2 z-10"
                   onClick={() => setIsPromptExpanded(true)}
                   title="Expand Prompt"
                 >
@@ -249,8 +317,8 @@ export function IndependentUseCaseFlow() {
               </div>
             </div>
 
-            {/* File & Model */}
-            <div className="grid grid-cols-2 gap-5 items-end">
+            {/* File */}
+            <div className="grid grid-cols-1 gap-5 items-end">
               <div className="space-y-1.5">
                 <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">Dataset (.xlsx)</h4>
                 <div className="flex items-center gap-3">
@@ -275,26 +343,12 @@ export function IndependentUseCaseFlow() {
                       <FileCheck2 className="size-4" /> {fileName}
                     </span>
                   )}
+                  {fileStatus === 'error' && (
+                    <span className="text-sm text-red-600 flex items-center gap-1.5">
+                      <AlertCircle className="size-4" /> {fileError}
+                    </span>
+                  )}
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">Model</h4>
-                <Select value={model} onValueChange={(val) => setModel(val || '')}>
-                  <SelectTrigger className="w-full h-auto py-2 bg-surface-0 items-center">
-                    <SelectValue placeholder="Select LLM Model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MODELS.map(m => (
-                      <SelectItem key={m.id} value={m.id}>
-                        <div className="flex flex-col items-start text-left">
-                          <span className="font-medium text-foreground">{m.name}</span>
-                          <span className="text-[10px] text-muted-foreground uppercase">{m.state}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
@@ -351,8 +405,8 @@ export function IndependentUseCaseFlow() {
             </p>
           </div>
 
-          <Button size="lg" className="bg-brand text-brand-fg hover:bg-brand-hover gap-2 px-8 mt-2">
-            <Download className="size-5" />
+          <Button size="lg" className="bg-brand text-brand-fg hover:bg-brand-hover gap-2 px-8 mt-2" onClick={handleDownloadOutput} disabled={downloading}>
+            {downloading ? <Loader2 className="size-5 animate-spin" /> : <Download className="size-5" />}
             {useCaseName}_LLMExport.xlsx
           </Button>
 

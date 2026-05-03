@@ -194,6 +194,7 @@ export interface ScreeningDetail {
   pipeline_step: number;
   pipeline_status: string;
   is_active: boolean;
+  curr_final_criteria?: string | null;
   original_filename: string;
   pdf_sha256: string;
   created_at: string;
@@ -207,6 +208,7 @@ export interface ScreeningSummary {
   pipeline_step: number;
   pipeline_status: string;
   is_active: boolean;
+  curr_final_criteria?: string | null;
   original_filename: string;
   updated_at: string;
 }

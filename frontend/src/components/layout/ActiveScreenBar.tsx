@@ -35,9 +35,9 @@ export function ActiveScreenBar() {
 
   return (
     <>
-      <div className="shrink-0 flex items-center justify-between gap-4 px-5 py-2.5 bg-emerald-600/95 text-white text-sm font-medium shadow-[0_-2px_8px_rgba(0,0,0,0.08)] backdrop-blur-sm z-40">
+      <div className="shrink-0 flex items-center justify-between gap-4 px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium shadow-[0_-2px_8px_rgba(0,0,0,0.08)] z-40">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="size-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+          <div className="size-2 rounded-full bg-emerald-300 shrink-0" />
           <span className="font-semibold truncate">{activeScreen.screenName}</span>
           <span className="text-emerald-200/80 hidden sm:inline">·</span>
           <span className="text-emerald-100/80 truncate hidden sm:inline">

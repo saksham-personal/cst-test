@@ -230,7 +230,7 @@ export function DescriptionCell({ value }: { value: string }) {
   const tooltip = isHovered && typeof document !== 'undefined'
     ? createPortal(
         <div
-          className="pointer-events-none fixed z-[9999] overflow-auto rounded-xl border border-border/90 bg-surface-0/98 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-2xl backdrop-blur-sm"
+          className="pointer-events-none fixed z-[9999] overflow-auto rounded-xl border border-border/90 bg-surface-0 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-2xl"
           style={tooltipStyle}
           dangerouslySetInnerHTML={{ __html: tooltipMarkup }}
         />,

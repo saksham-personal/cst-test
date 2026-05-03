@@ -74,6 +74,7 @@ class ScreeningsRepository:
                     is_active INTEGER NOT NULL DEFAULT 0,
                     llm_request_json TEXT,
                     llm_response_json TEXT,
+                    curr_final_criteria TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (document_id) REFERENCES screening_documents(id) ON DELETE CASCADE
@@ -92,6 +93,8 @@ class ScreeningsRepository:
                 )
             if "is_active" not in screening_columns:
                 conn.execute("ALTER TABLE screenings ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0")
+            if "curr_final_criteria" not in screening_columns:
+                conn.execute("ALTER TABLE screenings ADD COLUMN curr_final_criteria TEXT")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_screenings_document_id ON screenings(document_id)"
             )
@@ -127,6 +130,7 @@ class ScreeningsRepository:
         payload["edited_fields"] = _decode_json(payload.pop("edited_fields_json", "{}"), {})
         payload["llm_request_json"] = _decode_json(payload.get("llm_request_json"), None)
         payload["llm_response_json"] = _decode_json(payload.get("llm_response_json"), None)
+        payload["curr_final_criteria"] = payload.get("curr_final_criteria") or None
         payload["raw_extraction_payload"] = _decode_json(payload.get("raw_extraction_payload_json"), {})
         return payload
 
@@ -191,8 +195,8 @@ class ScreeningsRepository:
                     id, document_id, status, screen_name, website, inbound_date,
                     target_date, targets_found, output_file, extracted_fields_json,
                     edited_fields_json, pipeline_step, pipeline_status, is_active,
-                    llm_request_json, llm_response_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    llm_request_json, llm_response_json, curr_final_criteria, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     payload["id"],
@@ -211,6 +215,7 @@ class ScreeningsRepository:
                     1 if payload.get("is_active") else 0,
                     _encode_json(payload.get("llm_request_json")),
                     _encode_json(payload.get("llm_response_json")),
+                    payload.get("curr_final_criteria"),
                     payload.get("created_at") or _now_iso(),
                     payload.get("updated_at") or _now_iso(),
                 ),
@@ -302,7 +307,7 @@ class ScreeningsRepository:
                     inbound_date = ?, target_date = ?, targets_found = ?, output_file = ?,
                     extracted_fields_json = ?, edited_fields_json = ?, pipeline_step = ?,
                     pipeline_status = ?, is_active = ?, llm_request_json = ?,
-                    llm_response_json = ?, created_at = ?, updated_at = ?
+                    llm_response_json = ?, curr_final_criteria = ?, created_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -321,6 +326,7 @@ class ScreeningsRepository:
                     1 if payload.get("is_active", existing.get("is_active")) else 0,
                     _encode_json(payload.get("llm_request_json")),
                     _encode_json(payload.get("llm_response_json")),
+                    payload.get("curr_final_criteria", existing.get("curr_final_criteria")),
                     payload.get("created_at", existing.get("created_at") or _now_iso()),
                     payload.get("updated_at") or _now_iso(),
                     screening_id,

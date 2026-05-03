@@ -236,6 +236,18 @@ body {
 .ag-premium-headers .ag-row-hover {
   background-color: rgba(37, 99, 235, 0.04) !important;
 }
+
+/* CPU-first UI: keep loaders lightweight, but disable blur and decorative motion. */
+.animate-pulse,
+.animate-in,
+.animate-out {
+  animation: none !important;
+}
+
+[class*="backdrop-blur"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
 .ag-premium-headers .ag-row.ag-row-selected,
 .ag-theme-quartz.ag-premium-headers .ag-row.ag-row-selected,
 .ag-theme-quartz.ag-premium-headers .ag-row-selected,

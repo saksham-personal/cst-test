@@ -25,6 +25,7 @@ interface CriteriaText { type: 'bullet_list' | 'paragraph'; items: string[] }
 interface InitialUnderstanding { table: CriteriaTable; text: CriteriaText }
 interface CriteriaQuestion { id: string; category: string; question_concise: string; question_detailed?: string; answer: string | null }
 interface FinalCriteria { content_markdown: string }
+interface CriteriaChatMessage { id: string; role: 'user' | 'assistant'; content: string }
 
 interface CriteriaPayload {
   initial_understanding: InitialUnderstanding;
@@ -226,6 +227,7 @@ export function CriteriaAnalysisPage() {
   const [loadErrorStage, setLoadErrorStage] = useState<CriteriaStage | null>(null);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [isSendingChat, setIsSendingChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<CriteriaChatMessage[]>([]);
   const [conversationId] = useState(() => crypto.randomUUID());
   const [availableModels, setAvailableModels] = useState<LLMSuiteModelInfo[]>([]);
   const bootstrappedRef = useRef(false);
@@ -429,7 +431,10 @@ export function CriteriaAnalysisPage() {
     if (!chatMessage.trim()) return;
     clearStageError();
     setIsSendingChat(true);
+    const userContent = chatMessage.trim();
     try {
+      const userMessage: CriteriaChatMessage = { id: crypto.randomUUID(), role: 'user', content: userContent };
+      setChatMessages((current) => [...current, userMessage]);
       const payloadMessages: LLMSuiteChatMessage[] = [
         {
           role: 'system',
@@ -438,7 +443,7 @@ export function CriteriaAnalysisPage() {
         },
         {
           role: 'user',
-          content: chatMessage,
+          content: userContent,
           metadata: { workflowStep: 'criteria-analysis-chat' },
         },
       ];
@@ -460,13 +465,23 @@ export function CriteriaAnalysisPage() {
         },
       });
 
-      setChatMessage(response.message.content);
+      const assistantContent = response.message.content || `Stub response: I would refine the final criteria based on "${userContent}". For UI testing, this message demonstrates a bidirectional LLM reply.`;
+      setChatMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: 'assistant', content: assistantContent },
+      ]);
+      setChatMessage('');
       if (response.warnings.length > 0) {
         toast.info(response.warnings.map((warning) => warning.message).join(' '));
       }
     } catch (error: any) {
-      setLoadErrorStage('chat');
-      setLoadErrorMessage(error?.message || 'Failed to send chat request.');
+      const assistantContent = `Stub response: I would refine the criteria using your request, "${userContent}". This fallback appears when the LLM stub is unavailable.`;
+      setChatMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: 'assistant', content: assistantContent },
+      ]);
+      setChatMessage('');
+      toast.info('LLM stub unavailable, showing local stub response for chat UI testing.');
     } finally {
       setIsSendingChat(false);
     }
@@ -694,6 +709,28 @@ export function CriteriaAnalysisPage() {
                     </div>
 
                     <div className="pt-4 border-t space-y-4">
+                      <div className="max-h-72 space-y-3 overflow-auto rounded-xl border bg-surface-0 p-4">
+                        {chatMessages.length === 0 ? (
+                          <div className="text-sm text-text-tertiary italic">Ask the LLM to refine or explain the final screening criteria. Stub replies will appear here.</div>
+                        ) : (
+                          chatMessages.map((message) => (
+                            <div
+                              key={message.id}
+                              className={cn(
+                                'rounded-lg px-3 py-2 text-sm leading-6',
+                                message.role === 'user'
+                                  ? 'ml-auto max-w-[78%] bg-brand text-brand-fg'
+                                  : 'mr-auto max-w-[78%] bg-surface-1 text-text-primary border',
+                              )}
+                            >
+                              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider opacity-70">
+                                {message.role === 'user' ? 'You' : 'LLM Stub'}
+                              </div>
+                              {message.content}
+                            </div>
+                          ))
+                        )}
+                      </div>
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <Textarea 
@@ -713,7 +750,7 @@ export function CriteriaAnalysisPage() {
                             }>
                               <Expand className="size-4" />
                             </DialogTrigger>
-                            <DialogContent className="max-w-7xl w-[95vw] h-[80vh] flex flex-col p-6">
+                            <DialogContent className="h-[80vh] w-[min(70vw,1280px)] max-w-[calc(100vw-2rem)] p-6 sm:max-w-[min(70vw,1280px)] flex flex-col">
                               <DialogHeader>
                                 <DialogTitle>Expanded Chat Editor</DialogTitle>
                               </DialogHeader>

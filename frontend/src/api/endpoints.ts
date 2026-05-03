@@ -121,6 +121,7 @@ export interface ListSummary {
   count: number;
   screening_id?: string | null;
   screen_name?: string | null;
+  created_at?: string;
   updated_at: string;
 }
 
@@ -225,6 +226,28 @@ export async function removeCompaniesFromList(listName: string, companyNames: st
 export async function deleteList(name: string) {
   const { data } = await apiClient.delete(`/v1/lists/${encodeURIComponent(name)}`);
   return data;
+}
+
+// ── LLM Screening ───────────────────────────────────────────────
+export interface LLMScreeningPromptsResponse {
+  prompts: Record<string, string>;
+  source_screening_id?: string | null;
+  criteria_used: string;
+}
+
+export async function generateLLMScreeningPrompts(
+  payload: { screening_id?: string | null; screen_id?: string | null; rationale_enabled: boolean },
+): Promise<LLMScreeningPromptsResponse> {
+  const { data } = await apiClient.post<LLMScreeningPromptsResponse>('/v1/llm-screening/generate-prompts', payload, {
+    timeout: 0,
+  });
+  return data;
+}
+
+export function getIndependentLLMOutputUrl(useCaseName: string): string {
+  const baseURL = (import.meta as any).env.VITE_API_BASE || '/api';
+  const params = new URLSearchParams({ use_case_name: useCaseName });
+  return `${baseURL}/v1/llm-screening/independent-output-stub?${params.toString()}`;
 }
 
 // ── History ────────��───────────────────────────────────────────

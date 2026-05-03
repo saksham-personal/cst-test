@@ -58,6 +58,7 @@ class ListSummary(BaseModel):
     count: int = Field(description="Number of companies in the list.")
     screening_id: str | None = Field(default=None, description="Optional linked screening identifier.")
     screen_name: str | None = Field(default=None, description="Optional linked screening name.")
+    created_at: str = Field(default="", description="ISO timestamp when the list was created.")
     updated_at: str = Field(default="", description="ISO timestamp of the latest change.")
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -35,6 +36,7 @@ export function AddToListDialog({
   searchId = null,
   totalCount = 0,
 }: AddToListDialogProps) {
+  const navigate = useNavigate();
   const effectiveCount = selectAll ? totalCount : rows.length;
   const [lists, setLists] = useState<ListSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -137,7 +139,13 @@ export function AddToListDialog({
       }
       toast.success(
         `Added ${effectiveCount.toLocaleString()} compan${effectiveCount === 1 ? 'y' : 'ies'} to "${selected}"`,
-        { id: toastId },
+        {
+          id: toastId,
+          action: {
+            label: 'Go to list',
+            onClick: () => navigate('/lists', { state: { openListName: selected } }),
+          },
+        },
       );
       onOpenChange(false);
     } catch (err: any) {

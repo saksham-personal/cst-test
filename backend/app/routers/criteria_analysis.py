@@ -106,6 +106,17 @@ STUB_RESPONSE = CriteriaAnalysisResponse(
 )
 
 
+def _response_for_screening(
+    screenings_service: ScreeningsService,
+    screening_id: str,
+) -> CriteriaAnalysisResponse:
+    response = STUB_RESPONSE.model_copy(deep=True)
+    detail = screenings_service.get_screening(screening_id)
+    if detail.curr_final_criteria:
+        response.current_final_criteria.content_markdown = detail.curr_final_criteria
+    return response
+
+
 @router.post("/analyze", response_model=CriteriaAnalysisResponse)
 async def analyze_criteria(
     req: AnalyzeRequest,
@@ -119,7 +130,7 @@ async def analyze_criteria(
         pipeline_status=ScreeningsService.PIPELINE_STATUS_USER_QA_PENDING,
         is_active=True,
     )
-    return STUB_RESPONSE
+    return _response_for_screening(screenings_service, req.screening_id)
 
 
 @router.post("/refine", response_model=CriteriaAnalysisResponse)
@@ -135,4 +146,9 @@ async def refine_criteria(
         pipeline_status=ScreeningsService.PIPELINE_STATUS_GENERATING_CRITERIA,
         is_active=True,
     )
-    return STUB_RESPONSE
+    response = _response_for_screening(screenings_service, req.screening_id)
+    screenings_service.save_current_final_criteria(
+        req.screening_id,
+        response.current_final_criteria.content_markdown,
+    )
+    return response
