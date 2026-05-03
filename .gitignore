@@ -26,9 +26,7 @@ index_uploads/
 active_index_bundle.json
 
 # Local user state
-lists/
 search_history.json
-screenings/
 
 # Scratch databases and logs
 *.db
