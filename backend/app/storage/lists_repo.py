@@ -52,10 +52,20 @@ class ListsRepository:
                 CREATE TABLE IF NOT EXISTS saved_lists (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
+                    screening_id TEXT,
+                    screen_name TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            saved_list_columns = {
+                str(row["name"])
+                for row in conn.execute("PRAGMA table_info(saved_lists)").fetchall()
+            }
+            if "screening_id" not in saved_list_columns:
+                conn.execute("ALTER TABLE saved_lists ADD COLUMN screening_id TEXT")
+            if "screen_name" not in saved_list_columns:
+                conn.execute("ALTER TABLE saved_lists ADD COLUMN screen_name TEXT")
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS list_companies (
                     list_id INTEGER,
@@ -75,15 +85,20 @@ class ListsRepository:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
-    def list_summaries(self) -> list[dict[str, Any]]:
+    def list_summaries(self, screening_id: str | None = None) -> list[dict[str, Any]]:
+        screening_filter = _normalize_text(screening_id)
         with self._get_connection() as conn:
-            cursor = conn.execute('''
-                SELECT l.name, l.updated_at, COUNT(c.primary_key_value) as count
+            query = '''
+                SELECT l.name, l.screening_id, l.screen_name, l.updated_at, COUNT(c.primary_key_value) as count
                 FROM saved_lists l
                 LEFT JOIN list_companies c ON l.id = c.list_id
-                GROUP BY l.id
-                ORDER BY LOWER(l.name)
-            ''')
+            '''
+            params: list[str] = []
+            if screening_filter:
+                query += ' WHERE l.screening_id = ?'
+                params.append(screening_filter)
+            query += ' GROUP BY l.id ORDER BY LOWER(l.name)'
+            cursor = conn.execute(query, params)
             rows = cursor.fetchall()
             
         summaries = []
@@ -91,6 +106,8 @@ class ListsRepository:
             summaries.append({
                 "name": row["name"],
                 "count": row["count"],
+                "screening_id": row["screening_id"],
+                "screen_name": row["screen_name"],
                 "updated_at": row["updated_at"]
             })
         return summaries
@@ -121,6 +138,8 @@ class ListsRepository:
                 "name": list_row["name"],
                 "created_at": list_row["created_at"],
                 "updated_at": list_row["updated_at"],
+                "screening_id": list_row["screening_id"],
+                "screen_name": list_row["screen_name"],
                 "companies": companies
             }
 
@@ -131,6 +150,8 @@ class ListsRepository:
             
         now = _now_iso()
         created_at = data.get("created_at") or now
+        screening_id = _normalize_text(data.get("screening_id")) or None
+        screen_name = _normalize_text(data.get("screen_name")) or None
         
         with self._get_connection() as conn:
             cursor = conn.execute("SELECT id FROM saved_lists WHERE name = ?", (name,))
@@ -138,12 +159,15 @@ class ListsRepository:
             
             if list_row:
                 list_id = list_row["id"]
-                conn.execute("UPDATE saved_lists SET updated_at = ? WHERE id = ?", (now, list_id))
+                conn.execute(
+                    "UPDATE saved_lists SET screening_id = ?, screen_name = ?, updated_at = ? WHERE id = ?",
+                    (screening_id, screen_name, now, list_id),
+                )
                 conn.execute("DELETE FROM list_companies WHERE list_id = ?", (list_id,))
             else:
                 cursor = conn.execute(
-                    "INSERT INTO saved_lists (name, created_at, updated_at) VALUES (?, ?, ?)",
-                    (name, created_at, now)
+                    "INSERT INTO saved_lists (name, screening_id, screen_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (name, screening_id, screen_name, created_at, now)
                 )
                 list_id = cursor.lastrowid
                 
@@ -177,7 +201,13 @@ class ListsRepository:
                 
         return self.get_list(name)
 
-    def create_list(self, name: str) -> dict[str, Any]:
+    def create_list(
+        self,
+        name: str,
+        *,
+        screening_id: str | None = None,
+        screen_name: str | None = None,
+    ) -> dict[str, Any]:
         clean = _normalize_text(name)
         if not clean:
             raise ValueError("List name cannot be empty.")
@@ -190,7 +220,10 @@ class ListsRepository:
                 raise FileExistsError(f"A list named '{clean}' already exists.")
                 
             now = _now_iso()
-            conn.execute("INSERT INTO saved_lists (name, created_at, updated_at) VALUES (?, ?, ?)", (clean, now, now))
+            conn.execute(
+                "INSERT INTO saved_lists (name, screening_id, screen_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (clean, _normalize_text(screening_id) or None, _normalize_text(screen_name) or None, now, now),
+            )
             
         return self.get_list(clean)
 

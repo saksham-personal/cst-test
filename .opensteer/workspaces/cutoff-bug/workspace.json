@@ -1,0 +1,16 @@
+{
+  "createdAt": 1777751512942,
+  "layout": "opensteer-workspace",
+  "paths": {
+    "artifacts": "artifacts",
+    "browser": "browser",
+    "live": "live",
+    "observations": "observations",
+    "registry": "registry",
+    "traces": "traces"
+  },
+  "scope": "workspace",
+  "updatedAt": 1777751512942,
+  "version": 2,
+  "workspace": "cutoff-bug"
+}

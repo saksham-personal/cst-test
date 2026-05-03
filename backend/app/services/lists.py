@@ -41,15 +41,17 @@ class ListsService:
             name=str(data.get("name", "")).strip(),
             created_at=str(data.get("created_at", "")).strip(),
             updated_at=str(data.get("updated_at", "")).strip(),
+            screening_id=(str(data["screening_id"]).strip() if data.get("screening_id") else None),
+            screen_name=(str(data["screen_name"]).strip() if data.get("screen_name") else None),
             count=len(companies),
             companies=companies,
         )
 
-    def list_summaries(self) -> list[ListSummary]:
-        return [ListSummary(**item) for item in self.repo.list_summaries()]
+    def list_summaries(self, screening_id: str | None = None) -> list[ListSummary]:
+        return [ListSummary(**item) for item in self.repo.list_summaries(screening_id)]
 
-    def list_lists(self) -> ListCollectionResponse:
-        summaries = self.list_summaries()
+    def list_lists(self, screening_id: str | None = None) -> ListCollectionResponse:
+        summaries = self.list_summaries(screening_id)
         return ListCollectionResponse(count=len(summaries), lists=summaries)
 
     def get_list(self, name: str) -> ListDetail:
@@ -59,9 +61,16 @@ class ListsService:
         return self._to_detail(data)
 
     def create_list(self, payload: ListCreateRequest | str) -> ListCreateResponse:
-        name = payload.name if isinstance(payload, ListCreateRequest) else str(payload)
+        if isinstance(payload, ListCreateRequest):
+            name = payload.name
+            screening_id = payload.screening_id
+            screen_name = payload.screen_name
+        else:
+            name = str(payload)
+            screening_id = None
+            screen_name = None
         try:
-            data = self.repo.create_list(name)
+            data = self.repo.create_list(name, screening_id=screening_id, screen_name=screen_name)
         except FileExistsError as exc:
             raise ConflictError(str(exc)) from exc
         except ValueError as exc:

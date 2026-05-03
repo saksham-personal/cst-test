@@ -115,7 +115,7 @@ export function ScreeningDetailPage() {
       const response = await startScreening(id);
       setScreening((current) => current ? { ...current, status: response.status } : current);
       toast.success(response.message);
-      navigate(`/llm-chat/${id}`, {
+      navigate(`/criteria-analysis/${id}`, {
         state: {
           seededScreeningPayload: response.payload,
           sourceScreeningId: id,

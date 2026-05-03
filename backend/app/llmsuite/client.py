@@ -133,7 +133,7 @@ class LLMSuiteChatClient:
                 "deploymentId": request.deployment_id,
                 "conversationId": str(request.conversation_id),
                 "messages": [item.model_dump(mode="json") for item in request.messages],
-                "modelConfig": request.model_config.model_dump(by_alias=True) if request.model_config else None,
+                "modelConfig": request.llm_config.model_dump(by_alias=True) if request.llm_config else None,
                 "toolsEnabled": request.tools_enabled,
                 "sourcesEnabled": request.sources_enabled,
                 "metadata": request.metadata,

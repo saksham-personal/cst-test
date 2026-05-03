@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { KeywordBuilder } from '../components/search/KeywordBuilder';
 import { QueryBox } from '../components/search/QueryBox';
 import { ResultsToolbar } from '../components/search/ResultsToolbar';
@@ -9,7 +10,7 @@ import { RecentSearches } from '../components/search/RecentSearches';
 import { SearchResultRow, SearchPageResponse } from '../api/types';
 import { useSearch, buildSearchPayload } from '../hooks/useSearch';
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts';
-import { useSearchStore } from '../stores/searchStore';
+import { type Keyword, useSearchStore } from '../stores/searchStore';
 import { toast } from 'sonner';
 
 // Splitter bounds — the top (builder) pane must stay usable and the bottom
@@ -18,6 +19,12 @@ const MIN_TOP_PX = 180;
 const MIN_BOTTOM_PX = 220;
 const DEFAULT_TOP_PX = 320;
 const TOP_PANE_KEY = 'company-screener-top-pane-h';
+
+interface SearchNavigationState {
+  autoApplyKeywords?: boolean;
+  generatedKeywords?: Keyword[];
+  generatedQueryExpression?: string;
+}
 
 function readStoredTopPx(): number {
   try {
@@ -33,10 +40,15 @@ function readStoredTopPx(): number {
 export function SearchPage() {
   useSearchShortcuts();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navigationState = (location.state as SearchNavigationState | null) ?? null;
+
   const [selectedRow, setSelectedRow] = useState<SearchResultRow | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchPageResponse | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [showKeywordApplySkeleton, setShowKeywordApplySkeleton] = useState(false);
 
   const [drawerAddListOpen, setDrawerAddListOpen] = useState(false);
   const [drawerAddRow, setDrawerAddRow] = useState<SearchResultRow | null>(null);
@@ -50,8 +62,35 @@ export function SearchPage() {
 
   const searchMutation = useSearch();
   const setLastResult = useSearchStore((s) => s.setLastResult);
+  const setKeywords = useSearchStore((s) => s.setKeywords);
+  const setQueryExpression = useSearchStore((s) => s.setQueryExpression);
   const selectedOnlyView = useSearchStore((s) => s.selectedOnlyView);
   const setSelectedOnlyView = useSearchStore((s) => s.setSelectedOnlyView);
+
+  useEffect(() => {
+    if (!navigationState?.autoApplyKeywords || !navigationState.generatedKeywords?.length) {
+      return;
+    }
+
+    setShowKeywordApplySkeleton(true);
+    const timer = window.setTimeout(() => {
+      setKeywords(navigationState.generatedKeywords || []);
+      setQueryExpression(navigationState.generatedQueryExpression || '1 OR 2 OR 3');
+      setShowKeywordApplySkeleton(false);
+      toast.success('Generated keywords applied to the builder');
+      navigate(location.pathname, { replace: true, state: null });
+    }, 850);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    location.pathname,
+    navigate,
+    navigationState?.autoApplyKeywords,
+    navigationState?.generatedKeywords,
+    navigationState?.generatedQueryExpression,
+    setKeywords,
+    setQueryExpression,
+  ]);
 
   const handleRowClick = (row: SearchResultRow) => {
     setSelectedRow(row);
@@ -143,7 +182,31 @@ export function SearchPage() {
             <RecentSearches />
           </div>
 
-          <KeywordBuilder />
+          {showKeywordApplySkeleton ? (
+            <div className="flex flex-col space-y-3 rounded-lg border border-border bg-surface-0 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-1">
+                <div className="h-6 w-40 rounded bg-border/50 animate-pulse" />
+                <div className="h-4 w-44 rounded bg-border/40 animate-pulse" />
+              </div>
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="flex items-center gap-3">
+                  <div className="h-8 w-12 rounded-full bg-border/50 animate-pulse" />
+                  <div className="h-9 flex-1 rounded bg-border/40 animate-pulse" />
+                  <div className="h-9 w-28 rounded bg-border/40 animate-pulse" />
+                  <div className="h-9 w-28 rounded bg-border/40 animate-pulse" />
+                  <div className="h-9 w-16 rounded bg-border/40 animate-pulse" />
+                  <div className="h-8 w-8 rounded bg-border/40 animate-pulse" />
+                </div>
+              ))}
+              <div className="flex items-center gap-3 pt-1">
+                <div className="h-8 w-28 rounded bg-border/40 animate-pulse" />
+                <div className="h-8 w-24 rounded bg-border/40 animate-pulse" />
+                <div className="ml-auto h-8 w-24 rounded bg-border/40 animate-pulse" />
+              </div>
+            </div>
+          ) : (
+            <KeywordBuilder />
+          )}
           <QueryBox onSearch={handleSearch} isLoading={searchMutation.isPending} />
         </div>
       </div>

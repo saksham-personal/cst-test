@@ -4,9 +4,15 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { X, List as ListIcon, Plus, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { addCompaniesFromSearchToList, addCompaniesToList, createList, getLists } from '../../api/endpoints';
+import {
+  addCompaniesFromSearchToList,
+  addCompaniesToList,
+  createList,
+  getActiveScreening,
+  getLists,
+} from '../../api/endpoints';
 import type { ListSummary } from '../../api/endpoints';
-import type { SearchResultRow } from '../../api/types';
+import type { SearchResultRow, ScreeningDetail } from '../../api/types';
 
 interface AddToListDialogProps {
   open: boolean;
@@ -36,6 +42,7 @@ export function AddToListDialog({
   const [creating, setCreating] = useState(false);
   const [adding, setAdding] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activeScreening, setActiveScreening] = useState<ScreeningDetail | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -44,10 +51,15 @@ export function AddToListDialog({
     (async () => {
       setLoading(true);
       try {
-        const data = await getLists();
+        const [data, active] = await Promise.all([
+          getLists(),
+          getActiveScreening().catch(() => null),
+        ]);
         setLists(Array.isArray(data?.lists) ? data.lists : []);
+        setActiveScreening(active);
       } catch {
         setLists([]);
+        setActiveScreening(null);
       } finally {
         setLoading(false);
       }
@@ -59,11 +71,20 @@ export function AddToListDialog({
     if (!name) return;
     setCreating(true);
     try {
-      await createList(name);
+      await createList(name, activeScreening?.id ?? null, activeScreening?.screen_name ?? null);
       setLists((prev) =>
         prev.some((l) => l.name === name)
           ? prev
-          : [...prev, { name, count: 0, updated_at: '' }].sort((a, b) => a.name.localeCompare(b.name)),
+          : [
+              ...prev,
+              {
+                name,
+                count: 0,
+                screening_id: activeScreening?.id ?? null,
+                screen_name: activeScreening?.screen_name ?? null,
+                updated_at: '',
+              },
+            ].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setSelected(name);
       setNewListName('');

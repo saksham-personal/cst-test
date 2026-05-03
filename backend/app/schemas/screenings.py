@@ -46,7 +46,36 @@ class ScreeningDuplicateItem(BaseModel):
     status: ScreeningStatus = Field(description="Current screening workflow status.")
     screen_name: str | None = Field(default=None, description="Draft screening name if already provided.")
     website: str | None = Field(default=None, description="Optional website attached to the screening.")
+    pipeline_step: int = Field(default=1, description="Current pipeline step integer.")
+    pipeline_status: str = Field(default="FORM_UPLOADED", description="Current pipeline status string.")
+    is_active: bool = Field(default=False, description="Whether this screening is the active screening.")
     created_at: str = Field(default="", description="ISO timestamp when the screening was created.")
+    updated_at: str = Field(default="", description="ISO timestamp when the screening was last updated.")
+
+
+class ScreeningSummary(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "scr_123",
+                "screen_name": "Healthcare Platform Targets",
+                "status": "screening_started",
+                "pipeline_step": 3,
+                "pipeline_status": "USER_QA_PENDING",
+                "is_active": True,
+                "original_filename": "screening.pdf",
+                "updated_at": "2026-04-12T10:30:00",
+            }
+        }
+    )
+
+    id: str = Field(description="Screening identifier.")
+    screen_name: str | None = Field(default=None, description="Human-friendly screening name.")
+    status: ScreeningStatus = Field(description="Current screening workflow status.")
+    pipeline_step: int = Field(default=1, description="Current pipeline step integer.")
+    pipeline_status: str = Field(default="FORM_UPLOADED", description="Current pipeline status string.")
+    is_active: bool = Field(default=False, description="Whether this screening is the active screening.")
+    original_filename: str = Field(default="", description="Original uploaded PDF filename.")
     updated_at: str = Field(default="", description="ISO timestamp when the screening was last updated.")
 
 
@@ -84,6 +113,9 @@ class ScreeningDetail(BaseModel):
     output_file: str | None = Field(default=None, description="Optional output file path reserved for later stages.")
     extracted_fields: dict[str, str] = Field(default_factory=dict, description="Normalized parser output.")
     edited_fields: dict[str, str] = Field(default_factory=dict, description="Current user-edited working copy.")
+    pipeline_step: int = Field(default=1, description="Current pipeline step integer.")
+    pipeline_status: str = Field(default="FORM_UPLOADED", description="Current pipeline status string.")
+    is_active: bool = Field(default=False, description="Whether this screening is the active screening.")
     original_filename: str = Field(description="Original uploaded PDF filename.")
     pdf_sha256: str = Field(description="Document hash used for duplicate detection.")
     created_at: str = Field(default="", description="ISO timestamp when the screening was created.")

@@ -20,6 +20,8 @@ from app.routers.lists import router as lists_router
 from app.routers.meta import router as meta_router
 from app.routers.screenings import router as screenings_router
 from app.routers.search import router as search_router
+from app.routers.llm_screening import router as llm_screening_router
+from app.routers.criteria_analysis import router as criteria_analysis_router
 from app.services.exports import ExportService
 from app.services.index_jobs import IndexJobService
 from app.services.keywords import KeywordsService
@@ -146,7 +148,9 @@ def create_app(settings=None) -> FastAPI:
     app.include_router(exports_router, prefix=settings.api_v1_prefix)
     app.include_router(index_jobs_router, prefix=settings.api_v1_prefix)
     app.include_router(screenings_router, prefix=settings.api_v1_prefix)
+    app.include_router(llm_screening_router, prefix=settings.api_v1_prefix)
     app.include_router(llmsuite_router, prefix=settings.api_v1_prefix)
+    app.include_router(criteria_analysis_router, prefix=settings.api_v1_prefix)
 
     # Serve pre-built React frontend in production (when frontend/dist/ exists).
     # Must be registered after all API routers so /api/v1/* is matched first.

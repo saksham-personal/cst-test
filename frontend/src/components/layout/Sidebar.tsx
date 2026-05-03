@@ -1,4 +1,4 @@
-import { Search, List, Database, ChevronLeft, ChevronRight, FileText, MessagesSquare } from 'lucide-react';
+import { Search, List, Database, ChevronLeft, ChevronRight, FileText, Sparkles, FileCheck2, Home, PlayCircle, Download } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { useUiStore } from '../../stores/uiStore';
@@ -9,9 +9,13 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUiStore();
 
   const navItems = [
+    { label: 'Steps', icon: Home, path: '/steps' },
+    { label: 'Start Screening', icon: PlayCircle, path: '/start-screening' },
     { label: 'Form Intake', icon: FileText, path: '/screenings/new' },
-    { label: 'LLM Chat', icon: MessagesSquare, path: '/llm-chat' },
+    { label: 'Criteria Analysis', icon: Sparkles, path: '/criteria-analysis' },
     { label: 'Search', icon: Search, path: '/search' },
+    { label: 'LLM Screening', icon: FileCheck2, path: '/llm-screening' },
+    { label: 'Output Compilation', icon: Download, path: '/output-compilation' },
     { label: 'Lists', icon: List, path: '/lists' },
     { label: 'Build Index', icon: Database, path: '/build-index' },
   ];

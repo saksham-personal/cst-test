@@ -1,0 +1,9 @@
+{
+  "bootstrap": {
+    "kind": "empty"
+  },
+  "createdAt": 1777751513015,
+  "mode": "persistent",
+  "updatedAt": 1777751513015,
+  "userDataDir": "browser/user-data"
+}

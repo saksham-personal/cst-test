@@ -56,6 +56,8 @@ class ListSummary(BaseModel):
 
     name: str = Field(description="List name.")
     count: int = Field(description="Number of companies in the list.")
+    screening_id: str | None = Field(default=None, description="Optional linked screening identifier.")
+    screen_name: str | None = Field(default=None, description="Optional linked screening name.")
     updated_at: str = Field(default="", description="ISO timestamp of the latest change.")
 
 
@@ -95,6 +97,8 @@ class ListDetail(BaseModel):
     name: str = Field(description="List name.")
     created_at: str = Field(default="", description="ISO timestamp when the list was created.")
     updated_at: str = Field(default="", description="ISO timestamp of the latest change.")
+    screening_id: str | None = Field(default=None, description="Optional linked screening identifier.")
+    screen_name: str | None = Field(default=None, description="Optional linked screening name.")
     count: int = Field(default=0, description="Number of companies in the list.")
     companies: list[ListCompanyEntry] = Field(default_factory=list, description="Companies stored in the list.")
 
@@ -103,6 +107,8 @@ class ListCreateRequest(BaseModel):
     model_config = ConfigDict(json_schema_extra={"example": {"name": "Q2 Targets"}})
 
     name: str = Field(description="Unique list name.")
+    screening_id: str | None = Field(default=None, description="Optional screening id to associate the list with.")
+    screen_name: str | None = Field(default=None, description="Optional screening name to cache with the list.")
 
 
 class ListCreateResponse(BaseModel):

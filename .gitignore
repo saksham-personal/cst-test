@@ -85,3 +85,4 @@ test_xlsxwriter.py
 # Temporary search history/debug payloads
 tmp_search_history_*.json
 tmp_validation_direct/
+release/

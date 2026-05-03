@@ -10,6 +10,7 @@ import type {
   IndexJobDetail,
   HistoryEntry,
   ScreeningDetail,
+  ScreeningSummary,
   ScreeningFieldPatchRequest,
   ScreeningFieldPatchResponse,
   ScreeningIntakeResponse,
@@ -118,6 +119,8 @@ export async function getMeta(): Promise<MetaResponse> {
 export interface ListSummary {
   name: string;
   count: number;
+  screening_id?: string | null;
+  screen_name?: string | null;
   updated_at: string;
 }
 
@@ -133,6 +136,8 @@ export interface ListDetail {
   name: string;
   created_at: string;
   updated_at: string;
+  screening_id?: string | null;
+  screen_name?: string | null;
   count: number;
   companies: ListCompanyEntry[];
 }
@@ -146,13 +151,23 @@ export interface ListCollectionResponse {
   lists: ListSummary[];
 }
 
-export async function getLists(): Promise<ListCollectionResponse> {
-  const { data } = await apiClient.get<ListCollectionResponse>('/v1/lists');
+export async function getLists(screeningId?: string | null): Promise<ListCollectionResponse> {
+  const { data } = await apiClient.get<ListCollectionResponse>('/v1/lists', {
+    params: screeningId ? { screening_id: screeningId } : undefined,
+  });
   return data;
 }
 
-export async function createList(name: string): Promise<{ item: ListDetail }> {
-  const { data } = await apiClient.post('/v1/lists', { name });
+export async function createList(
+  name: string,
+  screeningId?: string | null,
+  screenName?: string | null,
+): Promise<{ item: ListDetail }> {
+  const { data } = await apiClient.post('/v1/lists', {
+    name,
+    screening_id: screeningId ?? null,
+    screen_name: screenName ?? null,
+  });
   return data;
 }
 
@@ -304,6 +319,20 @@ export async function createDuplicateScreening(documentId: string): Promise<Scre
 
 export async function getScreeningDetail(screeningId: string): Promise<ScreeningDetail> {
   const { data } = await apiClient.get<ScreeningDetail>(`/v1/screenings/${encodeURIComponent(screeningId)}`);
+  return data;
+}
+
+export async function getActiveScreening(): Promise<ScreeningDetail> {
+  const { data } = await apiClient.get<ScreeningDetail>('/v1/screenings/active', {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
+  return data;
+}
+
+export async function listScreenings(): Promise<ScreeningSummary[]> {
+  const { data } = await apiClient.get<ScreeningSummary[]>('/v1/screenings', {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 

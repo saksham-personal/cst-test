@@ -69,6 +69,9 @@ class ScreeningsRepository:
                     output_file TEXT,
                     extracted_fields_json TEXT NOT NULL,
                     edited_fields_json TEXT NOT NULL,
+                    pipeline_step INTEGER NOT NULL DEFAULT 1,
+                    pipeline_status TEXT NOT NULL DEFAULT 'FORM_UPLOADED',
+                    is_active INTEGER NOT NULL DEFAULT 0,
                     llm_request_json TEXT,
                     llm_response_json TEXT,
                     created_at TEXT NOT NULL,
@@ -77,6 +80,18 @@ class ScreeningsRepository:
                 )
                 """
             )
+            screening_columns = {
+                str(row["name"])
+                for row in conn.execute("PRAGMA table_info(screenings)").fetchall()
+            }
+            if "pipeline_step" not in screening_columns:
+                conn.execute("ALTER TABLE screenings ADD COLUMN pipeline_step INTEGER NOT NULL DEFAULT 1")
+            if "pipeline_status" not in screening_columns:
+                conn.execute(
+                    "ALTER TABLE screenings ADD COLUMN pipeline_status TEXT NOT NULL DEFAULT 'FORM_UPLOADED'"
+                )
+            if "is_active" not in screening_columns:
+                conn.execute("ALTER TABLE screenings ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_screenings_document_id ON screenings(document_id)"
             )
@@ -105,6 +120,9 @@ class ScreeningsRepository:
         payload["targets_found"] = (
             int(payload["targets_found"]) if payload.get("targets_found") is not None else None
         )
+        payload["pipeline_step"] = int(payload.get("pipeline_step") or 1)
+        payload["pipeline_status"] = str(payload.get("pipeline_status") or "FORM_UPLOADED")
+        payload["is_active"] = bool(int(payload.get("is_active") or 0))
         payload["extracted_fields"] = _decode_json(payload.pop("extracted_fields_json", "{}"), {})
         payload["edited_fields"] = _decode_json(payload.pop("edited_fields_json", "{}"), {})
         payload["llm_request_json"] = _decode_json(payload.get("llm_request_json"), None)
@@ -172,9 +190,9 @@ class ScreeningsRepository:
                 INSERT INTO screenings (
                     id, document_id, status, screen_name, website, inbound_date,
                     target_date, targets_found, output_file, extracted_fields_json,
-                    edited_fields_json, llm_request_json, llm_response_json,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    edited_fields_json, pipeline_step, pipeline_status, is_active,
+                    llm_request_json, llm_response_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     payload["id"],
@@ -188,6 +206,9 @@ class ScreeningsRepository:
                     payload.get("output_file"),
                     _encode_json(payload.get("extracted_fields", {})) or "{}",
                     _encode_json(payload.get("edited_fields", {})) or "{}",
+                    int(payload.get("pipeline_step") or 1),
+                    payload.get("pipeline_status", "FORM_UPLOADED"),
+                    1 if payload.get("is_active") else 0,
                     _encode_json(payload.get("llm_request_json")),
                     _encode_json(payload.get("llm_response_json")),
                     payload.get("created_at") or _now_iso(),
@@ -219,6 +240,53 @@ class ScreeningsRepository:
             ).fetchone()
         return self._screening_from_row(row)
 
+    def get_active_screening(self) -> dict[str, Any] | None:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    s.*,
+                    d.original_filename,
+                    d.pdf_sha256,
+                    d.storage_path,
+                    d.file_size_bytes,
+                    d.mime_type,
+                    d.raw_extraction_payload_json
+                FROM screenings s
+                JOIN screening_documents d ON d.id = s.document_id
+                WHERE s.is_active = 1
+                ORDER BY s.updated_at DESC, s.created_at DESC
+                LIMIT 1
+                """,
+            ).fetchone()
+        return self._screening_from_row(row)
+
+    def list_screenings(self) -> list[dict[str, Any]]:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    s.*,
+                    d.original_filename,
+                    d.pdf_sha256,
+                    d.storage_path,
+                    d.file_size_bytes,
+                    d.mime_type,
+                    d.raw_extraction_payload_json
+                FROM screenings s
+                JOIN screening_documents d ON d.id = s.document_id
+                ORDER BY s.updated_at DESC, s.created_at DESC
+                """
+            ).fetchall()
+        return [item for item in (self._screening_from_row(row) for row in rows) if item is not None]
+
+    def clear_active_screening(self, *, exclude_screening_id: str | None = None) -> None:
+        with self._get_connection() as conn:
+            if exclude_screening_id:
+                conn.execute("UPDATE screenings SET is_active = 0 WHERE id <> ?", (exclude_screening_id,))
+            else:
+                conn.execute("UPDATE screenings SET is_active = 0")
+
     def update_screening(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         screening_id = str(payload.get("id", "")).strip()
         if not screening_id:
@@ -232,7 +300,8 @@ class ScreeningsRepository:
                 UPDATE screenings
                 SET document_id = ?, status = ?, screen_name = ?, website = ?,
                     inbound_date = ?, target_date = ?, targets_found = ?, output_file = ?,
-                    extracted_fields_json = ?, edited_fields_json = ?, llm_request_json = ?,
+                    extracted_fields_json = ?, edited_fields_json = ?, pipeline_step = ?,
+                    pipeline_status = ?, is_active = ?, llm_request_json = ?,
                     llm_response_json = ?, created_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
@@ -247,6 +316,9 @@ class ScreeningsRepository:
                     payload.get("output_file"),
                     _encode_json(payload.get("extracted_fields", existing.get("extracted_fields", {}))) or "{}",
                     _encode_json(payload.get("edited_fields", existing.get("edited_fields", {}))) or "{}",
+                    int(payload.get("pipeline_step", existing.get("pipeline_step") or 1) or 1),
+                    payload.get("pipeline_status", existing.get("pipeline_status") or "FORM_UPLOADED"),
+                    1 if payload.get("is_active", existing.get("is_active")) else 0,
                     _encode_json(payload.get("llm_request_json")),
                     _encode_json(payload.get("llm_response_json")),
                     payload.get("created_at", existing.get("created_at") or _now_iso()),

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path, Query
 
 from app.core.dependencies import get_lists_service, get_search_service
 from app.core.errors import NotFoundError
@@ -32,6 +32,19 @@ router = APIRouter(prefix="/lists", tags=["lists"])
 )
 def list_lists(service: ListsService = Depends(get_lists_service)) -> ListCollectionResponse:
     return service.list_lists()
+
+
+@router.get(
+    "",
+    response_model=ListCollectionResponse,
+    summary="List saved company lists",
+    description="Return summaries for every persisted list on disk, optionally filtered by screening id.",
+)
+def list_lists_filtered(
+    screening_id: str | None = Query(default=None, description="Optional screening id to filter lists by."),
+    service: ListsService = Depends(get_lists_service),
+) -> ListCollectionResponse:
+    return service.list_lists(screening_id)
 
 
 @router.post(

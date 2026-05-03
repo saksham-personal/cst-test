@@ -80,7 +80,7 @@ class DeploymentCreateRequest(AliasedModel):
     name: str
     description: str | None = None
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    model_config: LLMSuiteModelConfig = Field(..., alias="modelConfig")
+    llm_config: LLMSuiteModelConfig = Field(..., alias="modelConfig")
     tools: list[LLMSuiteToolConfig] = Field(default_factory=list)
     sources: list[LLMSuiteSourceConfig] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -90,7 +90,7 @@ class DeploymentPatchRequest(AliasedModel):
     name: str | None = None
     description: str | None = None
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    model_config: LLMSuiteModelConfig | None = Field(default=None, alias="modelConfig")
+    llm_config: LLMSuiteModelConfig | None = Field(default=None, alias="modelConfig")
     tools: list[LLMSuiteToolConfig] | None = None
     sources: list[LLMSuiteSourceConfig] | None = None
     metadata: dict[str, Any] | None = None
@@ -101,7 +101,7 @@ class DeploymentInfo(AliasedModel):
     name: str
     description: str | None = None
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    model_config: LLMSuiteModelConfig | None = Field(default=None, alias="modelConfig")
+    llm_config: LLMSuiteModelConfig | None = Field(default=None, alias="modelConfig")
     tools: list[LLMSuiteToolConfig] = Field(default_factory=list)
     sources: list[LLMSuiteSourceConfig] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
@@ -118,7 +118,7 @@ class ChatCreateRequest(AliasedModel):
     deployment_id: str = Field(..., alias="deploymentId")
     conversation_id: UUID = Field(..., alias="conversationId")
     messages: list[ChatMessage]
-    model_config: LLMSuiteModelConfig | None = Field(default=None, alias="modelConfig")
+    llm_config: LLMSuiteModelConfig | None = Field(default=None, alias="modelConfig")
     tools_enabled: bool | None = Field(default=None, alias="toolsEnabled")
     sources_enabled: bool | None = Field(default=None, alias="sourcesEnabled")
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -3,6 +3,13 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,9 +32,11 @@ import {
   getListCompanyDetail,
   createList,
   deleteList,
+  listScreenings,
   removeCompaniesFromList,
 } from '../api/endpoints';
 import type { ListSummary, ListCompanyEntry, ListCompanyDetail } from '../api/endpoints';
+import type { ScreeningSummary } from '../api/types';
 import { toast } from 'sonner';
 import { ExportDialog } from '../components/search/ExportDialog';
 import { ListCompanyDetailDrawer } from '../components/lists/ListCompanyDetailDrawer';
@@ -66,8 +75,11 @@ function shouldIgnoreRowClick(target: EventTarget | null): boolean {
 }
 
 export function ListsPage() {
+  const ALL_SCREENS_VALUE = '__all__';
   const [filterText, setFilterText] = useState('');
   const [listSummaries, setListSummaries] = useState<ListSummary[]>([]);
+  const [screeningOptions, setScreeningOptions] = useState<ScreeningSummary[]>([]);
+  const [selectedScreeningId, setSelectedScreeningId] = useState<string | null>(null);
   const [selectedList, setSelectedList] = useState<string>('');
   const [listCompanies, setListCompanies] = useState<ListCompanyEntry[]>([]);
   const [loadingLists, setLoadingLists] = useState(false);
@@ -90,17 +102,26 @@ export function ListsPage() {
   const companyDetailCacheRef = useRef<Record<string, ListCompanyDetail>>({});
   const companyDetailRequestRef = useRef(0);
 
-  const loadLists = async () => {
+  const loadLists = useCallback(async (screeningId: string | null = selectedScreeningId) => {
     setLoadingLists(true);
     try {
-      const data = await getLists();
+      const data = await getLists(screeningId);
       setListSummaries(Array.isArray(data?.lists) ? data.lists : []);
     } catch {
       toast.error('Failed to load lists (is the backend running?)');
     } finally {
       setLoadingLists(false);
     }
-  };
+  }, [selectedScreeningId]);
+
+  const loadScreeningOptions = useCallback(async () => {
+    try {
+      const data = await listScreenings();
+      setScreeningOptions(Array.isArray(data) ? data : []);
+    } catch {
+      setScreeningOptions([]);
+    }
+  }, []);
 
   const loadDetail = async (name: string) => {
     setLoadingDetail(true);
@@ -122,8 +143,21 @@ export function ListsPage() {
   };
 
   useEffect(() => {
-    loadLists();
-  }, []);
+    void loadScreeningOptions();
+  }, [loadScreeningOptions]);
+
+  useEffect(() => {
+    void loadLists(selectedScreeningId);
+  }, [loadLists, selectedScreeningId]);
+
+  useEffect(() => {
+    if (selectedList && !listSummaries.some((summary) => summary.name === selectedList)) {
+      setSelectedList('');
+      setListCompanies([]);
+      setSelectedCompanyDetail(null);
+      setDrawerOpen(false);
+    }
+  }, [listSummaries, selectedList]);
 
   // Apply the toolbar quick-filter to the grid directly — AG Grid handles
   // tokenization, index-based matching, and row virtualization for us.
@@ -141,11 +175,12 @@ export function ListsPage() {
     if (!name) return;
     setCreating(true);
     try {
-      await createList(name);
+      const linkedScreen = screeningOptions.find((screen) => screen.id === selectedScreeningId) ?? null;
+      await createList(name, linkedScreen?.id ?? null, linkedScreen?.screen_name ?? null);
       toast.success(`Created "${name}"`);
       setNewName('');
       setCreateOpen(false);
-      await loadLists();
+      await loadLists(selectedScreeningId);
       handleSelectList(name);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to create list');
@@ -165,7 +200,7 @@ export function ListsPage() {
       setSelectedCompanyDetail(null);
       setDrawerOpen(false);
       setDeleteOpen(false);
-      await loadLists();
+      await loadLists(selectedScreeningId);
     } catch {
       toast.error('Failed to delete list');
     } finally {
@@ -314,12 +349,34 @@ export function ListsPage() {
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={loadLists}
+              onClick={() => { void loadLists(selectedScreeningId); }}
               disabled={loadingLists}
               title="Refresh"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loadingLists ? 'animate-spin' : ''}`} />
             </Button>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+              Filter by screen
+            </label>
+            <Select
+              value={selectedScreeningId ?? ALL_SCREENS_VALUE}
+              onValueChange={(value) => setSelectedScreeningId(value === ALL_SCREENS_VALUE ? null : value)}
+            >
+              <SelectTrigger className="w-full h-9 bg-surface-0 items-center text-left">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_SCREENS_VALUE}>None</SelectItem>
+                {screeningOptions.map((screen) => (
+                  <SelectItem key={screen.id} value={screen.id}>
+                    {screen.screen_name || screen.original_filename || screen.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <Button
@@ -357,15 +414,22 @@ export function ListsPage() {
                         <ListIcon className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{summary.name}</span>
                       </span>
-                      <span
-                        className={
-                          'text-[10px] font-mono tabular-nums shrink-0 px-1.5 py-0.5 rounded ' +
-                          (selectedList === summary.name
-                            ? 'bg-brand/20'
-                            : 'bg-surface-2 text-text-tertiary')
-                        }
-                      >
-                        {summary.count}
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {summary.screen_name && (
+                          <span className="max-w-[92px] truncate rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-tertiary">
+                            {summary.screen_name}
+                          </span>
+                        )}
+                        <span
+                          className={
+                            'text-[10px] font-mono tabular-nums shrink-0 px-1.5 py-0.5 rounded ' +
+                            (selectedList === summary.name
+                              ? 'bg-brand/20'
+                              : 'bg-surface-2 text-text-tertiary')
+                          }
+                        >
+                          {summary.count}
+                        </span>
                       </span>
                     </button>
                   </li>

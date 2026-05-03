@@ -11,10 +11,31 @@ from app.schemas.screenings import (
     ScreeningFieldPatchResponse,
     ScreeningIntakeResponse,
     ScreeningStartResponse,
+    ScreeningSummary,
 )
 from app.services.screenings import ScreeningsService
 
 router = APIRouter(prefix="/screenings", tags=["screenings"])
+
+
+@router.get(
+    "",
+    response_model=list[ScreeningSummary],
+    summary="List screenings",
+    description="Return screening summaries for dropdowns, routing, and active-screen context.",
+)
+def list_screenings(service: ScreeningsService = Depends(get_screenings_service)) -> list[ScreeningSummary]:
+    return service.list_screenings()
+
+
+@router.get(
+    "/active",
+    response_model=ScreeningDetail,
+    summary="Get the active screening",
+    description="Return the currently active screening used to gate downstream workflow steps.",
+)
+def get_active_screening(service: ScreeningsService = Depends(get_screenings_service)) -> ScreeningDetail:
+    return service.get_active_screening()
 
 
 @router.post(

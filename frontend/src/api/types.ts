@@ -191,9 +191,23 @@ export interface ScreeningDetail {
   output_file: string | null;
   extracted_fields: Record<string, string>;
   edited_fields: Record<string, string>;
+  pipeline_step: number;
+  pipeline_status: string;
+  is_active: boolean;
   original_filename: string;
   pdf_sha256: string;
   created_at: string;
+  updated_at: string;
+}
+
+export interface ScreeningSummary {
+  id: string;
+  screen_name: string | null;
+  status: 'draft' | 'screening_started';
+  pipeline_step: number;
+  pipeline_status: string;
+  is_active: boolean;
+  original_filename: string;
   updated_at: string;
 }
 
