@@ -23,6 +23,14 @@ KEYWORD_TEMPLATE_CSV = (
 )
 
 
+def _quote_exact_keyword(keyword: str) -> str:
+    """Convert legacy CSV `mode=exact` rows into the quoted exact-search syntax."""
+    text = str(keyword).strip()
+    if not text or '"' in text:
+        return text
+    return f'"{text}"'
+
+
 class KeywordsService:
     def template(self) -> KeywordTemplateResponse:
         return KeywordTemplateResponse(filename="keyword_template.csv", content=KEYWORD_TEMPLATE_CSV)
@@ -120,6 +128,12 @@ class KeywordsService:
             df["mode"] = "lexical"
         else:
             df["mode"] = df["mode"].astype(str).str.strip().str.lower()
+
+        exact_mode_mask = df["mode"].eq("exact")
+        if exact_mode_mask.any():
+            df.loc[exact_mode_mask, "keyword"] = df.loc[exact_mode_mask, "keyword"].map(_quote_exact_keyword)
+            df.loc[exact_mode_mask, "mode"] = "lexical"
+            warnings.append("Converted legacy mode 'exact' to quoted lexical exact-search keywords.")
 
         if "action" not in df.columns:
             df["action"] = "include"

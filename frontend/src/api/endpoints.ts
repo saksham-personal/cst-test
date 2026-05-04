@@ -15,6 +15,7 @@ import type {
   ScreeningFieldPatchResponse,
   ScreeningIntakeResponse,
   ScreeningStartResponse,
+  CriteriaAnalysisResponse,
   LLMSuiteChatCompletionResponse,
   LLMSuiteChatCreateRequest,
   LLMSuiteHealthStatus,
@@ -25,7 +26,9 @@ import type {
 
 // ── Search ─────────────────────────────────────────────────────
 export async function executeSearch(payload: SearchExecuteRequest): Promise<SearchPageResponse> {
-  const { data } = await apiClient.post<SearchPageResponse>('/v1/search/execute', payload);
+  const { data } = await apiClient.post<SearchPageResponse>('/v1/search/execute', payload, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 
@@ -76,7 +79,9 @@ export async function searchPage(
 
 // ── Keywords ────���──────────────────────────────────────────────
 export async function validateExpression(payload: ExpressionValidateRequest): Promise<ExpressionValidateResponse> {
-  const { data } = await apiClient.post<ExpressionValidateResponse>('/v1/keywords/validate', payload);
+  const { data } = await apiClient.post<ExpressionValidateResponse>('/v1/keywords/validate', payload, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 
@@ -168,6 +173,8 @@ export async function createList(
     name,
     screening_id: screeningId ?? null,
     screen_name: screenName ?? null,
+  }, {
+    headers: { 'X-Skip-Error-Toast': '1' },
   });
   return data;
 }
@@ -194,7 +201,9 @@ export interface ListCompanyInput {
 }
 
 export async function addCompaniesToList(listName: string, companies: ListCompanyInput[]) {
-  const { data } = await apiClient.post(`/v1/lists/${encodeURIComponent(listName)}/companies`, { companies });
+  const { data } = await apiClient.post(`/v1/lists/${encodeURIComponent(listName)}/companies`, { companies }, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 
@@ -211,7 +220,7 @@ export async function addCompaniesFromSearchToList(
     { search_id: searchId, source_keywords: sourceKeywords },
     // Adding 170k rows server-side can take a while; don't let an axios default
     // timeout kill it (we have none set globally, but be explicit here).
-    { timeout: 0 },
+    { timeout: 0, headers: { 'X-Skip-Error-Toast': '1' } },
   );
   return data;
 }
@@ -219,12 +228,15 @@ export async function addCompaniesFromSearchToList(
 export async function removeCompaniesFromList(listName: string, companyNames: string[]) {
   const { data } = await apiClient.delete(`/v1/lists/${encodeURIComponent(listName)}/companies`, {
     data: { company_names: companyNames },
+    headers: { 'X-Skip-Error-Toast': '1' },
   });
   return data;
 }
 
 export async function deleteList(name: string) {
-  const { data } = await apiClient.delete(`/v1/lists/${encodeURIComponent(name)}`);
+  const { data } = await apiClient.delete(`/v1/lists/${encodeURIComponent(name)}`, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 
@@ -240,6 +252,47 @@ export async function generateLLMScreeningPrompts(
 ): Promise<LLMScreeningPromptsResponse> {
   const { data } = await apiClient.post<LLMScreeningPromptsResponse>('/v1/llm-screening/generate-prompts', payload, {
     timeout: 0,
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
+  return data;
+}
+
+// ── Criteria Analysis ───────────────────────────────────────────
+export async function analyzeCriteria(payload: {
+  screening_id: string;
+  screening_payload?: Record<string, any> | null;
+}): Promise<CriteriaAnalysisResponse> {
+  const { data } = await apiClient.post<CriteriaAnalysisResponse>('/v1/criteria-analysis/analyze', payload, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
+  return data;
+}
+
+export async function markCriteriaProgress(payload: {
+  screening_id: string;
+  stage: 'questions' | 'final' | 'keywords';
+}): Promise<CriteriaAnalysisResponse> {
+  const { data } = await apiClient.post<CriteriaAnalysisResponse>('/v1/criteria-analysis/progress', payload, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
+  return data;
+}
+
+export async function refineCriteria(payload: {
+  screening_id: string;
+  answers: Array<{ id: string; answer: string }>;
+}): Promise<CriteriaAnalysisResponse> {
+  const { data } = await apiClient.post<CriteriaAnalysisResponse>('/v1/criteria-analysis/refine', payload, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
+  return data;
+}
+
+export async function rerunCriteriaAnalysis(screeningId: string): Promise<CriteriaAnalysisResponse> {
+  const { data } = await apiClient.post<CriteriaAnalysisResponse>('/v1/criteria-analysis/rerun', {
+    screening_id: screeningId,
+  }, {
+    headers: { 'X-Skip-Error-Toast': '1' },
   });
   return data;
 }
@@ -288,7 +341,7 @@ export async function uploadIndexJob(
   form.append('output_bundle_name', options.output_bundle_name);
   form.append('activate_on_success', options.activate_on_success ? 'true' : 'false');
   const { data } = await apiClient.post('/v1/index-jobs/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': 'multipart/form-data', 'X-Skip-Error-Toast': '1' },
     onUploadProgress: onUploadProgress
       ? (e) => {
           if (!e.total) return;
@@ -305,12 +358,16 @@ export async function getIndexJob(jobId: string): Promise<IndexJobDetail> {
 }
 
 export async function activateIndexJob(jobId: string): Promise<IndexJobDetail> {
-  const { data } = await apiClient.post<IndexJobDetail>(`/v1/index-jobs/${jobId}/activate`);
+  const { data } = await apiClient.post<IndexJobDetail>(`/v1/index-jobs/${jobId}/activate`, null, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 
 export async function cancelIndexJob(jobId: string): Promise<IndexJobDetail> {
-  const { data } = await apiClient.post<IndexJobDetail>(`/v1/index-jobs/${jobId}/cancel`);
+  const { data } = await apiClient.post<IndexJobDetail>(`/v1/index-jobs/${jobId}/cancel`, null, {
+    headers: { 'X-Skip-Error-Toast': '1' },
+  });
   return data;
 }
 

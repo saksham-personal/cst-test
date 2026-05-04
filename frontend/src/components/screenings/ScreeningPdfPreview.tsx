@@ -28,7 +28,8 @@ export function ScreeningPdfPreview({ src, open, onToggle, title = 'PDF Preview'
             <iframe
               src={src}
               title={title}
-              className="h-[720px] w-full"
+              loading="lazy"
+              className="h-[min(72vh,720px)] min-h-[420px] w-full"
             />
           </div>
         </CardContent>

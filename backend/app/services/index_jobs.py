@@ -310,7 +310,7 @@ class IndexJobService:
         self.repo.save_job(initial)
         if activate_on_success:
             self._monitor_auto_activation(job_id)
-        return self.get_job(job_id)
+        return self._job_from_dict(initial)
 
     def create_job_from_upload(
         self,
@@ -357,7 +357,7 @@ class IndexJobService:
         self.repo.save_job(initial)
         if activate_on_success:
             self._monitor_auto_activation(job_id)
-        return self.get_job(job_id)
+        return self._job_from_dict(initial)
 
     def cancel_job(self, job_id: str) -> IndexJobDetail:
         job = self._load_job_or_raise(job_id)

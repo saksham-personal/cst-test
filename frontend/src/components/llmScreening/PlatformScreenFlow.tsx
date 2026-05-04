@@ -12,6 +12,8 @@ import type { ColDef, GridApi, GridReadyEvent, SelectionChangedEvent } from 'ag-
 import { addCompaniesToList, createList, generateLLMScreeningPrompts, listScreenings } from '../../api/endpoints';
 import type { ScreeningSummary } from '../../api/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { extractApiErrorMessage } from '../../api/client';
+import { useScreenStore } from '../../stores/screenStore';
 
 /* ─── colour tokens for each bucket (safe static classes) ─── */
 const BUCKET_STYLES = {
@@ -110,8 +112,9 @@ export function PlatformScreenFlow({
   autoReview = false,
   onActivityStart,
 }: PlatformScreenFlowProps) {
+  const activeScreen = useScreenStore((store) => store.activeScreen);
   const [state, setState] = useState<FlowState>(autoReview ? 'review_prompts' : 'select');
-  const [selectedScreen, setSelectedScreen] = useState<string>(initialScreeningId ?? '');
+  const [selectedScreen, setSelectedScreen] = useState<string>(initialScreeningId ?? activeScreen?.id ?? '');
   const [screeningOptions, setScreeningOptions] = useState<ScreeningSummary[]>([]);
   const [loadingScreens, setLoadingScreens] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -138,11 +141,39 @@ export function PlatformScreenFlow({
   const [errorRerunAttempt, setErrorRerunAttempt] = useState(0);
   const resultGridApiRef = useRef<GridApi<StubResultRow> | null>(null);
   const syncingSelectionRef = useRef(false);
+  const lastDefaultActiveScreenIdRef = useRef<string | null>(initialScreeningId ?? null);
+
+  const screeningOptionsWithActive = useMemo<ScreeningSummary[]>(() => {
+    if (!activeScreen?.id || screeningOptions.some((screen) => screen.id === activeScreen.id)) {
+      return screeningOptions;
+    }
+    return [
+      {
+        id: activeScreen.id,
+        screen_name: activeScreen.screenName,
+        status: activeScreen.pipelineStatus === 'paused' ? 'draft' : 'screening_started',
+        pipeline_step: 1,
+        pipeline_status: activeScreen.pipelineStep,
+        is_active: true,
+        curr_final_criteria: activeScreen.currFinalCriteria ?? null,
+        original_filename: activeScreen.originalFilename || activeScreen.screenName,
+        updated_at: '',
+      },
+      ...screeningOptions,
+    ];
+  }, [activeScreen, screeningOptions]);
 
   const selectedScreenLabel = useMemo(() => {
-    const screen = screeningOptions.find((item) => item.id === selectedScreen);
-    return screen?.screen_name || screen?.original_filename || selectedScreen || 'selected screen';
-  }, [screeningOptions, selectedScreen]);
+    const screen = screeningOptionsWithActive.find((item) => item.id === selectedScreen);
+    return screen?.screen_name || screen?.original_filename || (selectedScreen ? selectedScreen : '');
+  }, [screeningOptionsWithActive, selectedScreen]);
+
+  useEffect(() => {
+    if (!activeScreen?.id || initialScreeningId) return;
+    if (lastDefaultActiveScreenIdRef.current === activeScreen.id) return;
+    lastDefaultActiveScreenIdRef.current = activeScreen.id;
+    setSelectedScreen(activeScreen.id);
+  }, [activeScreen?.id, initialScreeningId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,7 +208,7 @@ export function PlatformScreenFlow({
       setState('review_prompts');
       toast.success('Generated Yes/No/Maybe prompts. Review and edit prompts before starting.', { id: toastId });
     } catch (error: any) {
-      const message = error?.response?.data?.detail || error?.message || 'LLM prompt generation failed or timed out';
+      const message = extractApiErrorMessage(error, 'LLM prompt generation failed or timed out');
       setPromptError(message);
       setState('select');
       toast.error(`${message}. Use Try again to regenerate the prompts.`, { id: toastId });
@@ -210,7 +241,7 @@ export function PlatformScreenFlow({
     Error: results.filter((row) => row.decision === 'Error').length,
   }), [results]);
 
-  const finalListName = `${selectedScreenLabel.replace(/\s+/g, '_') || 'Screen'}_ListafterLLM`;
+  const finalListName = `${(selectedScreenLabel || 'Screen').replace(/\s+/g, '_')}_ListafterLLM`;
 
   const syncVisibleSelection = useCallback((api: GridApi<StubResultRow> | null = resultGridApiRef.current) => {
     if (!api) return;
@@ -315,25 +346,25 @@ export function PlatformScreenFlow({
   };
 
   const handleAddToFinalList = async () => {
-    const yesRows = results.filter((row) => row.decision === 'Yes');
-    if (yesRows.length === 0) {
-      toast.info('No YES rows are available to add to the final list.');
+    const selectedRows = results.filter((row) => selectedResultIds.has(row.id));
+    if (selectedRows.length === 0) {
+      toast.info('Select one or more LLM screening rows before adding to the final list.');
       return;
     }
     try {
       await createList(finalListName, selectedScreen || null, selectedScreenLabel || null).catch((error: any) => {
-        const detail = error?.response?.data?.detail || '';
+        const detail = extractApiErrorMessage(error, '');
         if (!String(detail).includes('already exists')) throw error;
       });
-      await addCompaniesToList(finalListName, yesRows.map((row) => ({
+      await addCompaniesToList(finalListName, selectedRows.map((row) => ({
         company: row.company,
         primary_key_value: row.id,
         crescendo_id: row.id,
-        source_keywords: ['LLM Screening YES'],
+        source_keywords: [`LLM Screening ${row.decision}`],
       })));
-      toast.success(`Created/updated final list "${finalListName}" with ${yesRows.length} YES rows.`);
+      toast.success(`Created/updated final list "${finalListName}" with ${selectedRows.length} selected row${selectedRows.length === 1 ? '' : 's'}.`);
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || 'Failed to add rows to the final list.');
+      toast.error(extractApiErrorMessage(error, 'Failed to add rows to the final list.'));
     }
   };
 
@@ -510,10 +541,12 @@ export function PlatformScreenFlow({
           <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Select Screen</h3>
           <Select value={selectedScreen} onValueChange={(val) => setSelectedScreen(val || '')}>
             <SelectTrigger className="w-full h-auto py-2 bg-surface-0 items-center">
-              <SelectValue placeholder={loadingScreens ? 'Loading screens…' : 'Choose a platform screen…'} />
+              <span className={cn('flex-1 truncate text-left', !selectedScreenLabel && 'text-muted-foreground')}>
+                {selectedScreenLabel || (loadingScreens ? 'Loading screens…' : 'Choose a platform screen…')}
+              </span>
             </SelectTrigger>
             <SelectContent>
-              {screeningOptions.map(screen => (
+              {screeningOptionsWithActive.map(screen => (
                 <SelectItem key={screen.id} value={screen.id}>
                   <div className="flex flex-col items-start text-left">
                     <span className="font-medium text-foreground">{screen.screen_name || screen.original_filename || screen.id}</span>
@@ -668,7 +701,7 @@ export function PlatformScreenFlow({
               const s = RESULT_BUCKET_STYLES[k];
               return (
                 <div key={k} className={cn("flex flex-col items-center py-3 rounded-lg border", s.border, s.bg)}>
-                  <span className={cn("font-bold text-2xl tabular-nums", s.text)}>{resultCounts[k]}</span>
+                  <span className={cn("font-bold text-2xl tabular-nums", s.text)}>{counts[k]}</span>
                   <span className="text-xs font-medium text-text-secondary">{k}</span>
                 </div>
               );
@@ -703,7 +736,7 @@ export function PlatformScreenFlow({
               <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedResultIds.size === 0}>
                 <Trash2 className="size-4 mr-1.5" /> Delete selected
               </Button>
-              <Button size="sm" className="bg-brand text-brand-fg hover:bg-brand-hover" onClick={handleAddToFinalList}>
+              <Button size="sm" className="bg-brand text-brand-fg hover:bg-brand-hover" onClick={handleAddToFinalList} disabled={selectedResultIds.size === 0}>
                 <Check className="size-4 mr-1.5" /> Add to Final List
               </Button>
             </div>

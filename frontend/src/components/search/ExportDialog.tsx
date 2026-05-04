@@ -169,7 +169,7 @@ export function ExportDialog({
           </Button>
         </div>
 
-        <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2">
           {OPTIONS.map((opt) => {
             const Icon = opt.icon;
             const isBusy = busy === opt.kind;

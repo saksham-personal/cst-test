@@ -39,6 +39,7 @@ Thumbs.db
 .vscode/
 .idea/
 .claude/
+.opensteer/
 
 # Agent / local MCP config
 .roo/

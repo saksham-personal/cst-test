@@ -12,6 +12,7 @@ import {
   getActiveScreening,
   getLists,
 } from '../../api/endpoints';
+import { extractApiErrorMessage } from '../../api/client';
 import type { ListSummary } from '../../api/endpoints';
 import type { SearchResultRow, ScreeningDetail } from '../../api/types';
 
@@ -92,8 +93,7 @@ export function AddToListDialog({
       setNewListName('');
       toast.success(`Created list "${name}"`);
     } catch (err: any) {
-      const message = err?.response?.data?.detail || 'Failed to create list';
-      toast.error(message);
+      toast.error(extractApiErrorMessage(err, 'Failed to create list'));
     } finally {
       setCreating(false);
     }
@@ -149,8 +149,7 @@ export function AddToListDialog({
       );
       onOpenChange(false);
     } catch (err: any) {
-      const message = err?.response?.data?.detail || 'Failed to add to list';
-      toast.error(message, { id: toastId });
+      toast.error(extractApiErrorMessage(err, 'Failed to add to list'), { id: toastId });
     } finally {
       setAdding(false);
     }

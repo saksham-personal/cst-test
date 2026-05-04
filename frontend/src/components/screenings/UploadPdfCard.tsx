@@ -39,6 +39,7 @@ export function UploadPdfCard({
     if (!nextFile) return;
     if (!nextFile.name.toLowerCase().endsWith('.pdf')) {
       toast.warning('Please choose a .pdf file');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     onFileSelected(nextFile);
@@ -65,6 +66,7 @@ export function UploadPdfCard({
           <div
             role="button"
             tabIndex={0}
+            aria-label="Choose or drop a PDF screening form"
             onClick={() => fileInputRef.current?.click()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -72,11 +74,19 @@ export function UploadPdfCard({
                 fileInputRef.current?.click();
               }
             }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               setIsDragging(true);
             }}
-            onDragLeave={() => setIsDragging(false)}
+            onDragLeave={(e) => {
+              const nextTarget = e.relatedTarget;
+              if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) return;
+              setIsDragging(false);
+            }}
             onDrop={(e) => {
               e.preventDefault();
               setIsDragging(false);
@@ -111,6 +121,7 @@ export function UploadPdfCard({
               }}
               disabled={isSubmitting}
               title="Remove file"
+              aria-label="Remove selected PDF file"
             >
               <X className="h-3.5 w-3.5" />
             </Button>

@@ -3,15 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import Settings
-from tests.support import run_test_server
+from tests.support import resolve_test_index_dir, run_test_server
 
 
 def _make_settings(tmp_path: Path) -> Settings:
-    candidate = Path(__file__).resolve().parents[2] / "search_index_exact"
-    if not candidate.exists():
-        candidate = Path(__file__).resolve().parents[2] / "search_index"
     return Settings(
-        index_dir=str(candidate),
+        index_dir=resolve_test_index_dir(),
         lists_dir=str(tmp_path / "lists"),
         search_history_path=str(tmp_path / "search_history.json"),
         active_index_state_path=str(tmp_path / "active_index_bundle.json"),

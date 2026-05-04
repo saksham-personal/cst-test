@@ -396,6 +396,19 @@ class ScreeningsService:
             raise NotFoundError(f"Screening '{screening_id}' not found.")
         return self._detail(saved)
 
+    def reset_criteria_analysis(self, screening_id: str) -> ScreeningDetail:
+        screening = self._load_screening_or_raise(screening_id)
+        updated = dict(screening)
+        updated["curr_final_criteria"] = None
+        updated["pipeline_step"] = self.STEP_AWAITING_LLM_QA
+        updated["pipeline_status"] = self.PIPELINE_STATUS_AWAITING_LLM_QA
+        updated["is_active"] = True
+        updated["updated_at"] = _now_iso()
+        saved = self.repo.update_screening(updated)
+        if saved is None:  # pragma: no cover - defensive path
+            raise NotFoundError(f"Screening '{screening_id}' not found.")
+        return self._detail(saved)
+
     def patch_screening(self, screening_id: str, payload: ScreeningFieldPatchRequest) -> ScreeningFieldPatchResponse:
         screening = self._load_screening_or_raise(screening_id)
         updated = dict(screening)
@@ -405,6 +418,13 @@ class ScreeningsService:
         if "website" in fields_set:
             updated["website"] = self._clean_optional_text(payload.website)
         if payload.edited_fields:
+            allowed_field_keys = set(self.RAW_TO_NORMALIZED.values())
+            invalid_keys = sorted(str(key) for key in payload.edited_fields if str(key) not in allowed_field_keys)
+            if invalid_keys:
+                raise ValidationAppError(
+                    "Only normalized screening field keys can be edited.",
+                    details={"invalid_keys": invalid_keys, "allowed_keys": sorted(allowed_field_keys)},
+                )
             merged = {
                 str(key): self._clean_field_value(value)
                 for key, value in dict(updated.get("edited_fields", {}) or {}).items()

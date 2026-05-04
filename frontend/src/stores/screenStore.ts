@@ -33,6 +33,7 @@ interface ScreenState {
   updateScreen: (id: string, patch: Partial<ScreenRecord>) => void;
   syncScreenings: (screenings: ScreeningSummary[]) => void;
   upsertScreeningDetail: (screening: ScreeningDetail) => void;
+  activateScreeningDetail: (screening: ScreeningDetail) => void;
 }
 
 function displayScreeningName(screening: ScreeningSummary | ScreeningDetail): string {
@@ -214,6 +215,16 @@ export const useScreenStore = create<ScreenState>()(
           return {
             screens,
             activeScreen: state.activeScreen?.id === record.id ? record : state.activeScreen,
+          };
+        }),
+
+      activateScreeningDetail: (screening) =>
+        set((state) => {
+          const record = toScreenRecord(screening);
+          const screens = [record, ...state.screens.filter((screen) => screen.id !== record.id)];
+          return {
+            screens,
+            activeScreen: record,
           };
         }),
     }),

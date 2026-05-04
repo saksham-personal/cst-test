@@ -12,6 +12,7 @@ import { useSearch, buildSearchPayload } from '../hooks/useSearch';
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts';
 import { type Keyword, useSearchStore } from '../stores/searchStore';
 import { toast } from 'sonner';
+import { extractApiErrorMessage } from '../api/client';
 
 // Splitter bounds — the top (builder) pane must stay usable and the bottom
 // (results) pane must always fit at least a toolbar + a few rows.
@@ -113,8 +114,7 @@ export function SearchPage() {
         );
       },
       onError: (err: any) => {
-        const msg = err?.response?.data?.detail || 'Search failed';
-        toast.error(typeof msg === 'string' ? msg : 'Search failed');
+        toast.error(extractApiErrorMessage(err, 'Search failed'));
       },
     });
   }, [searchMutation, setLastResult]);

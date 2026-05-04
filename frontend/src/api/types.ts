@@ -175,6 +175,9 @@ export interface ScreeningDuplicateItem {
   status: 'draft' | 'screening_started';
   screen_name: string | null;
   website: string | null;
+  pipeline_step: number;
+  pipeline_status: string;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -242,6 +245,48 @@ export interface ScreeningStartResponse {
   status: 'draft' | 'screening_started';
   message: string;
   payload: Record<string, any>;
+}
+
+export interface CriteriaColumn {
+  key: string;
+  label: string;
+}
+
+export interface CriteriaTable {
+  columns: CriteriaColumn[];
+  rows: Record<string, string>[];
+}
+
+export interface CriteriaText {
+  type: 'bullet_list' | 'paragraph';
+  items: string[];
+}
+
+export interface CriteriaInitialUnderstanding {
+  table: CriteriaTable;
+  text: CriteriaText;
+}
+
+export interface CriteriaQuestion {
+  id: string;
+  category: string;
+  question_concise: string;
+  question_detailed?: string;
+  answer: string | null;
+}
+
+export interface FinalCriteria {
+  content_markdown: string;
+}
+
+export interface CriteriaAnalysisResponse {
+  initial_understanding: CriteriaInitialUnderstanding;
+  questions: CriteriaQuestion[];
+  current_final_criteria: FinalCriteria;
+  screening_id?: string | null;
+  pipeline_step: number;
+  pipeline_status: string;
+  criteria_completed: boolean;
 }
 
 export type LLMSuiteMessageRole = 'system' | 'user' | 'assistant' | 'tool';

@@ -9,7 +9,7 @@ from curl_cffi import curl
 
 from app.core.config import Settings
 from app.services.index_jobs import IndexJobService
-from tests.support import run_test_server
+from tests.support import resolve_test_index_dir, run_test_server
 
 
 SOURCE_COLUMNS = [
@@ -27,7 +27,7 @@ SOURCE_COLUMNS = [
 
 def _make_settings(tmp_path: Path) -> Settings:
     return Settings(
-        index_dir=str(Path(__file__).resolve().parents[2] / "search_index_exact"),
+        index_dir=resolve_test_index_dir(),
         index_jobs_dir=str(tmp_path / "index_jobs"),
         index_bundles_dir=str(tmp_path / "index_bundles"),
         index_uploads_dir=str(tmp_path / "index_uploads"),

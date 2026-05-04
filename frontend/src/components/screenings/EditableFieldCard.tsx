@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Loader2, Pencil } from 'lucide-react';
+import { Check, Copy, Loader2, Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -26,6 +26,7 @@ export function EditableFieldCard({
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(value);
   const skipBlurRef = useRef(false);
+  const isDirty = draftValue.trim() !== value.trim();
 
   useEffect(() => {
     if (!editing) {
@@ -35,8 +36,12 @@ export function EditableFieldCard({
 
   const copyValue = async () => {
     if (!value.trim()) return;
-    await navigator.clipboard.writeText(value);
-    toast.success(`${label} copied`);
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error(`Could not copy ${label}`);
+    }
   };
 
   const saveIfChanged = async () => {
@@ -66,6 +71,18 @@ export function EditableFieldCard({
         </div>
         <div className="flex items-center gap-1">
           {isSaving && <Loader2 className="size-4 animate-spin text-brand" />}
+          {!editing && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setEditing(true)}
+              disabled={isSaving}
+              title={`Edit ${label}`}
+              aria-label={`Edit ${label}`}
+            >
+              <Pencil className="size-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" onClick={copyValue} disabled={!value.trim()} title={`Copy ${label}`}>
             <Copy className="size-4" />
           </Button>
@@ -73,66 +90,93 @@ export function EditableFieldCard({
       </CardHeader>
       <CardContent>
         {editing ? (
-          multiline ? (
-            <textarea
-              autoFocus
-              value={draftValue}
-              onChange={(e) => setDraftValue(e.target.value)}
-              onBlur={async () => {
-                if (skipBlurRef.current) {
-                  skipBlurRef.current = false;
-                  return;
-                }
-                await saveIfChanged();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  cancelEdit();
-                  (e.currentTarget as HTMLTextAreaElement).blur();
-                }
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  (e.currentTarget as HTMLTextAreaElement).blur();
-                }
-              }}
-              className="min-h-[160px] w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
-          ) : (
-            <Input
-              autoFocus
-              value={draftValue}
-              onChange={(e) => setDraftValue(e.target.value)}
-              onBlur={async () => {
-                if (skipBlurRef.current) {
-                  skipBlurRef.current = false;
-                  return;
-                }
-                await saveIfChanged();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  cancelEdit();
-                  (e.currentTarget as HTMLInputElement).blur();
-                }
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  (e.currentTarget as HTMLInputElement).blur();
-                }
-              }}
-            />
-          )
+          <div className="space-y-2">
+            {multiline ? (
+              <textarea
+                autoFocus
+                value={draftValue}
+                onChange={(e) => setDraftValue(e.target.value)}
+                onBlur={async () => {
+                  if (skipBlurRef.current) {
+                    skipBlurRef.current = false;
+                    return;
+                  }
+                  await saveIfChanged();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    cancelEdit();
+                    (e.currentTarget as HTMLTextAreaElement).blur();
+                  }
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    (e.currentTarget as HTMLTextAreaElement).blur();
+                  }
+                }}
+                className="min-h-[160px] w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            ) : (
+              <Input
+                autoFocus
+                value={draftValue}
+                onChange={(e) => setDraftValue(e.target.value)}
+                onBlur={async () => {
+                  if (skipBlurRef.current) {
+                    skipBlurRef.current = false;
+                    return;
+                  }
+                  await saveIfChanged();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    cancelEdit();
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+              />
+            )}
+            <div className="flex items-center justify-between gap-2 text-xs text-text-tertiary">
+              <span>{multiline ? 'Press Ctrl+Enter to save' : 'Press Enter to save'} or Esc to cancel.</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={cancelEdit}
+                  disabled={isSaving}
+                >
+                  <X className="mr-1 size-3" />
+                  Cancel
+                </Button>
+                <Button
+                  size="xs"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => { void saveIfChanged(); }}
+                  disabled={isSaving || !isDirty}
+                >
+                  {isSaving ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Check className="mr-1 size-3" />}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
         ) : (
           <button
             type="button"
-            onDoubleClick={() => setEditing(true)}
+            onClick={() => setEditing(true)}
             className={cn(
               'w-full rounded-lg border border-dashed border-border bg-surface-1 px-3 py-3 text-left transition-colors',
               'hover:border-brand/50 hover:bg-brand/5',
             )}
+            aria-label={`Edit ${label}`}
           >
             <div className="mb-2 flex items-center gap-2 text-xs text-text-tertiary">
               <Pencil className="size-3.5" />
-              Double-click to edit
+              Click to edit
               {!isSaving && value.trim() && <Check className="ml-auto size-3.5 text-success" />}
             </div>
             <div className="whitespace-pre-wrap break-words font-mono text-sm text-text-primary">

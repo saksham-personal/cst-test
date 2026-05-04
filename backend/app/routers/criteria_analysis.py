@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
 from app.core.dependencies import get_screenings_service
+from app.core.errors import ValidationAppError
 from app.services.screenings import ScreeningsService
 
 router = APIRouter(prefix="/criteria-analysis", tags=["criteria-analysis"])
@@ -44,6 +45,10 @@ class CriteriaAnalysisResponse(BaseModel):
     initial_understanding: InitialUnderstanding
     questions: List[CriteriaQuestion]
     current_final_criteria: FinalCriteria
+    screening_id: Optional[str] = None
+    pipeline_step: int = 1
+    pipeline_status: str = "FORM_UPLOADED"
+    criteria_completed: bool = False
 
 
 class AnalyzeRequest(BaseModel):
@@ -54,6 +59,15 @@ class AnalyzeRequest(BaseModel):
 class RefineRequest(BaseModel):
     screening_id: str
     answers: List[Dict[str, str]]
+
+
+class CriteriaProgressRequest(BaseModel):
+    screening_id: str
+    stage: str
+
+
+class RerunCriteriaRequest(BaseModel):
+    screening_id: str
 
 
 STUB_RESPONSE = CriteriaAnalysisResponse(
@@ -112,6 +126,10 @@ def _response_for_screening(
 ) -> CriteriaAnalysisResponse:
     response = STUB_RESPONSE.model_copy(deep=True)
     detail = screenings_service.get_screening(screening_id)
+    response.screening_id = detail.id
+    response.pipeline_step = detail.pipeline_step
+    response.pipeline_status = detail.pipeline_status
+    response.criteria_completed = bool(detail.curr_final_criteria)
     if detail.curr_final_criteria:
         response.current_final_criteria.content_markdown = detail.curr_final_criteria
     return response
@@ -124,12 +142,51 @@ async def analyze_criteria(
 ):
     """Stub: Analyze screening criteria from a PDF/payload and return structured understanding."""
     screenings_service.ensure_active_screening(req.screening_id)
-    screenings_service.update_pipeline_state(
-        req.screening_id,
-        pipeline_step=ScreeningsService.STEP_USER_QA_PENDING,
-        pipeline_status=ScreeningsService.PIPELINE_STATUS_USER_QA_PENDING,
-        is_active=True,
-    )
+    return _response_for_screening(screenings_service, req.screening_id)
+
+
+@router.post("/progress", response_model=CriteriaAnalysisResponse)
+async def mark_criteria_progress(
+    req: CriteriaProgressRequest,
+    screenings_service: ScreeningsService = Depends(get_screenings_service),
+):
+    """Persist the user's current criteria-analysis stage so reopening resumes there."""
+    screenings_service.ensure_active_screening(req.screening_id)
+    stage = req.stage.strip().lower()
+    if stage == "questions":
+        screenings_service.update_pipeline_state(
+            req.screening_id,
+            pipeline_step=ScreeningsService.STEP_USER_QA_PENDING,
+            pipeline_status=ScreeningsService.PIPELINE_STATUS_USER_QA_PENDING,
+            is_active=True,
+        )
+    elif stage == "final":
+        screenings_service.update_pipeline_state(
+            req.screening_id,
+            pipeline_step=ScreeningsService.STEP_GENERATING_CRITERIA,
+            pipeline_status=ScreeningsService.PIPELINE_STATUS_GENERATING_CRITERIA,
+            is_active=True,
+        )
+    elif stage == "keywords":
+        screenings_service.update_pipeline_state(
+            req.screening_id,
+            pipeline_step=ScreeningsService.STEP_KEYWORD_SEARCH,
+            pipeline_status=ScreeningsService.PIPELINE_STATUS_KEYWORD_SEARCH,
+            is_active=True,
+        )
+    else:
+        raise ValidationAppError("Unknown criteria-analysis stage.", details={"stage": req.stage})
+    return _response_for_screening(screenings_service, req.screening_id)
+
+
+@router.post("/rerun", response_model=CriteriaAnalysisResponse)
+async def rerun_criteria_analysis(
+    req: RerunCriteriaRequest,
+    screenings_service: ScreeningsService = Depends(get_screenings_service),
+):
+    """Reset saved criteria-analysis progress so the flow starts from the first step again."""
+    screenings_service.ensure_active_screening(req.screening_id)
+    screenings_service.reset_criteria_analysis(req.screening_id)
     return _response_for_screening(screenings_service, req.screening_id)
 
 
@@ -151,4 +208,10 @@ async def refine_criteria(
         req.screening_id,
         response.current_final_criteria.content_markdown,
     )
-    return response
+    screenings_service.update_pipeline_state(
+        req.screening_id,
+        pipeline_step=ScreeningsService.STEP_KEYWORD_SEARCH,
+        pipeline_status=ScreeningsService.PIPELINE_STATUS_KEYWORD_SEARCH,
+        is_active=True,
+    )
+    return _response_for_screening(screenings_service, req.screening_id)

@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Search, Loader2 } from 'lucide-react';
 import { validateExpression } from '../../api/endpoints';
 import type { KeywordInput } from '../../api/types';
+import { extractApiErrorMessage } from '../../api/client';
 
 interface QueryBoxProps {
   onSearch: () => void;
@@ -48,7 +49,7 @@ export function QueryBox({ onSearch, isLoading }: QueryBoxProps) {
         setParsedDisplay(null);
       }
     } catch (e: any) {
-      setErrorMsg(e.message || 'Parse failed');
+      setErrorMsg(extractApiErrorMessage(e, 'Parse failed'));
     }
   };
 

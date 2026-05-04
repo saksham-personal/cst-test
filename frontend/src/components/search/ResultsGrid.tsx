@@ -685,7 +685,7 @@ export function ResultsGrid({
     },
     suppressNoRowsOverlay: true,
     rowSelection: 'multiple' as const,
-    suppressRowClickSelection: false,
+    suppressRowClickSelection: true,
     rowClass: 'cursor-pointer hover:bg-surface-1',
     getRowId: (params: any) => params.data?.primary_key_value || String(params.data?.rowid),
   };

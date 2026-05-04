@@ -6,12 +6,12 @@ from tempfile import NamedTemporaryFile
 import pandas as pd
 
 from app.core.config import Settings
-from tests.support import run_test_server
+from tests.support import resolve_test_index_dir, run_test_server
 
 
 def _make_settings(tmp_path: Path) -> Settings:
     return Settings(
-        index_dir=str(Path(__file__).resolve().parents[2] / "search_index_exact"),
+        index_dir=resolve_test_index_dir(),
         lists_dir=str(tmp_path / "lists"),
         search_history_path=str(tmp_path / "search_history.json"),
         active_index_state_path=str(tmp_path / "active_index_bundle.json"),
@@ -56,34 +56,13 @@ def test_search_and_list_exports(tmp_path: Path) -> None:
                 "keywords": [
                     {
                         "serial": 1,
-                        "keyword": "door knobs",
-                        "mode": "lexical",
-                        "action": "include",
-                        "weight": 1,
-                    },
-                    {
-                        "serial": 2,
-                        "keyword": "Albuquerque",
-                        "mode": "lexical",
-                        "action": "include",
-                        "weight": 1,
-                    },
-                    {
-                        "serial": 3,
-                        "keyword": "technology",
-                        "mode": "lexical",
-                        "action": "include",
-                        "weight": 1,
-                    },
-                    {
-                        "serial": 4,
-                        "keyword": "circuit boards",
+                        "keyword": "manufacturer",
                         "mode": "lexical",
                         "action": "include",
                         "weight": 1,
                     },
                 ],
-                "query_expression": "1 AND 2 AND 3 AND 4",
+                "query_expression": "1",
                 "page": 1,
                 "page_size": 2,
                 "include_highlights": False,
@@ -91,7 +70,7 @@ def test_search_and_list_exports(tmp_path: Path) -> None:
             },
         )
         assert search.status_code == 200
-        assert search.json()["total_count"] <= 10
+        assert search.json()["total_count"] > 0
         search_id = search.json()["search_id"]
 
         search_export = client.get(

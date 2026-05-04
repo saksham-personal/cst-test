@@ -1,16 +1,58 @@
 from __future__ import annotations
 
+import json
 import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 import uvicorn
 from curl_cffi import requests
 from fastapi import FastAPI
 
 from app.core.config import Settings
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _is_index_bundle(path: Path) -> bool:
+    return (
+        path.exists()
+        and (path / "search.db").exists()
+        and (path / "company_metadata.parquet").exists()
+        and (path / "index_config.json").exists()
+    )
+
+
+def resolve_test_index_dir() -> str:
+    repo_root = _repo_root()
+    candidates: list[Path] = []
+
+    active_state_path = repo_root / "active_index_bundle.json"
+    try:
+        with active_state_path.open(encoding="utf-8") as handle:
+            active_index_dir = Path(str(json.load(handle).get("index_dir", "")).strip())
+        if active_index_dir:
+            candidates.append(active_index_dir)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
+        pass
+
+    candidates.extend([
+        repo_root / "search_index_exact",
+        repo_root / "search_index",
+    ])
+
+    for candidate in candidates:
+        if _is_index_bundle(candidate):
+            return str(candidate)
+
+    import pytest
+
+    pytest.skip("No usable search index bundle is available for search-backed API tests.")
 
 
 def _free_port() -> int:

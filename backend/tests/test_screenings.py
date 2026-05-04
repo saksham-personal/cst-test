@@ -155,6 +155,13 @@ def test_screening_intake_duplicate_clone_and_start_flow(tmp_path: Path, monkeyp
         assert patched_payload["website"] == "example.com"
         assert patched_payload["edited_fields"]["target_sector"] == "Healthcare IT"
 
+        raw_key_patch = client.patch(
+            f"{base_url}/api/v1/screenings/{screening['id']}/fields",
+            json={"edited_fields": {"Target Sector": "Raw key should not be accepted"}},
+        )
+        assert raw_key_patch.status_code == 400
+        assert "Target Sector" in raw_key_patch.json()["error"]["details"]["invalid_keys"]
+
         pdf_response = client.get(f"{base_url}/api/v1/screenings/{screening['id']}/pdf")
         assert pdf_response.status_code == 200
         assert "application/pdf" in pdf_response.headers.get("content-type", "")

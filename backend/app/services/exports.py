@@ -300,8 +300,7 @@ class ExportService:
         if list_detail is None:
             raise NotFoundError(f"List '{name}' not found.")
 
-        pk = self.search_service.primary_key
-        engine = self.search_service.engine
+        pk = self.search_service.primary_key or "Crescendo ID"
         companies = list_detail.companies
         primary_keys = [
             (company.primary_key_value or company.company or company.crescendo_id or "").strip()
@@ -328,6 +327,8 @@ class ExportService:
 
         effective_include_metadata = include_metadata or layout == "pitchbook"
         if effective_include_metadata:
+            engine = self.search_service.engine
+            pk = self.search_service.primary_key
             list_display_cols = _unique_preserve_order([pk, *MASTER_COLS_ORDERED])
             meta_subset = engine.meta_deduped[[c for c in list_display_cols if c in engine.meta_deduped.columns]]
             merged = score_df.merge(meta_subset, on=pk, how="left", suffixes=("", "_meta"))

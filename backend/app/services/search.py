@@ -449,16 +449,36 @@ class SearchService:
             for col_id, spec in filter_model.items():
                 if not isinstance(spec, dict):
                     continue
-                filter_type = spec.get("filterType", "text")
-                f_type = spec.get("type", "contains")
-                if filter_type == "number":
+
+                def _matches_one(condition: dict[str, Any]) -> bool:
+                    filter_type = condition.get("filterType", spec.get("filterType", "text"))
+                    f_type = condition.get("type", "contains")
                     value = _row_value(row, col_id)
-                    if not _match_number(value, f_type, spec.get("filter"), spec.get("filterTo")):
+                    if filter_type == "number":
+                        return _match_number(value, f_type, condition.get("filter"), condition.get("filterTo"))
+                    return _match_text(value, f_type, str(condition.get("filter", "")))
+
+                conditions = spec.get("conditions")
+                if not isinstance(conditions, list) or not conditions:
+                    legacy_conditions = [
+                        condition
+                        for condition in (spec.get("condition1"), spec.get("condition2"))
+                        if isinstance(condition, dict)
+                    ]
+                    conditions = legacy_conditions
+
+                if conditions:
+                    operator = str(spec.get("operator", "AND")).upper()
+                    condition_results = [_matches_one(condition) for condition in conditions if isinstance(condition, dict)]
+                    if not condition_results:
+                        continue
+                    if operator == "OR":
+                        if not any(condition_results):
+                            return False
+                    elif not all(condition_results):
                         return False
-                else:
-                    value = _row_value(row, col_id)
-                    if not _match_text(value, f_type, str(spec.get("filter", ""))):
-                        return False
+                elif not _matches_one(spec):
+                    return False
             return True
 
         return [row for row in rows if _row_matches(row)]

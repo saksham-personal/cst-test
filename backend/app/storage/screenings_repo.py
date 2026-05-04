@@ -93,6 +93,10 @@ class ScreeningsRepository:
                 )
             if "is_active" not in screening_columns:
                 conn.execute("ALTER TABLE screenings ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0")
+            if "llm_request_json" not in screening_columns:
+                conn.execute("ALTER TABLE screenings ADD COLUMN llm_request_json TEXT")
+            if "llm_response_json" not in screening_columns:
+                conn.execute("ALTER TABLE screenings ADD COLUMN llm_response_json TEXT")
             if "curr_final_criteria" not in screening_columns:
                 conn.execute("ALTER TABLE screenings ADD COLUMN curr_final_criteria TEXT")
             conn.execute(

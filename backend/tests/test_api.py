@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.dependencies import get_index_job_service, get_search_service
-from tests.support import run_test_server
+from tests.support import resolve_test_index_dir, run_test_server
 
 
 @dataclass
@@ -193,7 +193,7 @@ def test_index_job_routes_with_fake_service() -> None:
 
 def test_real_search_engine_finds_results(tmp_path: Path) -> None:
     settings = Settings(
-        index_dir=str(Path(__file__).resolve().parents[2] / "search_index_exact"),
+        index_dir=resolve_test_index_dir(),
         search_history_path=str(tmp_path / "history.json"),
         lists_dir=str(tmp_path / "lists"),
         active_index_state_path=str(tmp_path / "active_index_bundle.json"),

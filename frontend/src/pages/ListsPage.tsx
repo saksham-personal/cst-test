@@ -8,7 +8,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '../components/ui/select';
 import { Radio } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
@@ -44,10 +43,12 @@ import {
 import type { ListSummary, ListCompanyEntry, ListCompanyDetail, ListDetail } from '../api/endpoints';
 import type { ScreeningSummary } from '../api/types';
 import { toast } from 'sonner';
+import { extractApiErrorMessage } from '../api/client';
 import { ExportDialog } from '../components/search/ExportDialog';
 import { ListCompanyDetailDrawer } from '../components/lists/ListCompanyDetailDrawer';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { cn } from '../lib/utils';
+import { useScreenStore } from '../stores/screenStore';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import type { ColDef, SelectionChangedEvent, GridReadyEvent, GridApi, RowClickedEvent } from 'ag-grid-community';
@@ -86,9 +87,14 @@ function isLLMGeneratedListName(name: string): boolean {
   return /(?:^|[_\s-])listafterllm$/i.test(name) || /_listafterllm$/i.test(name) || /llm/i.test(name);
 }
 
+function getScreenDisplayName(screen?: ScreeningSummary | null): string {
+  return screen?.screen_name || screen?.original_filename || screen?.id || '';
+}
+ 
 export function ListsPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const activeScreen = useScreenStore((state) => state.activeScreen);
   const ALL_SCREENS_VALUE = '__all__';
   const NO_SCREEN_VALUE = '__none__';
   const ASSOCIATED_SCREENS_VALUE = '__associated__';
@@ -98,7 +104,7 @@ export function ListsPage() {
   const [filterText, setFilterText] = useState('');
   const [listSummaries, setListSummaries] = useState<ListSummary[]>([]);
   const [screeningOptions, setScreeningOptions] = useState<ScreeningSummary[]>([]);
-  const [selectedScreeningId, setSelectedScreeningId] = useState<string>(ALL_SCREENS_VALUE);
+  const [selectedScreeningId, setSelectedScreeningId] = useState<string>(activeScreen?.id ?? ALL_SCREENS_VALUE);
   const [selectedList, setSelectedList] = useState<string>('');
   const [selectedListDetail, setSelectedListDetail] = useState<ListDetail | null>(null);
   const [listCompanies, setListCompanies] = useState<ListCompanyEntry[]>([]);
@@ -123,6 +129,28 @@ export function ListsPage() {
   const gridApiRef = useRef<GridApi<ListCompanyEntry> | null>(null);
   const companyDetailCacheRef = useRef<Record<string, ListCompanyDetail>>({});
   const companyDetailRequestRef = useRef(0);
+  const lastDefaultActiveScreenIdRef = useRef<string | null>(activeScreen?.id ?? null);
+
+  const screeningOptionsWithActive = useMemo<ScreeningSummary[]>(() => {
+    if (!activeScreen?.id || screeningOptions.some((screen) => screen.id === activeScreen.id)) {
+      return screeningOptions;
+    }
+
+    return [
+      {
+        id: activeScreen.id,
+        screen_name: activeScreen.screenName,
+        status: activeScreen.pipelineStatus === 'paused' ? 'draft' : 'screening_started',
+        pipeline_step: 1,
+        pipeline_status: activeScreen.pipelineStep,
+        is_active: true,
+        curr_final_criteria: activeScreen.currFinalCriteria ?? null,
+        original_filename: activeScreen.originalFilename || activeScreen.screenName,
+        updated_at: '',
+      },
+      ...screeningOptions,
+    ];
+  }, [activeScreen, screeningOptions]);
 
   const listFilterParam = filterAssociation === 'none'
     ? NO_SCREEN_VALUE
@@ -167,7 +195,7 @@ export function ListsPage() {
     }
   }, []);
 
-  const loadDetail = async (name: string) => {
+  const loadDetail = useCallback(async (name: string): Promise<ListDetail | null> => {
     setLoadingDetail(true);
     setSelectedKeys(new Set());
     setDrawerOpen(false);
@@ -179,18 +207,34 @@ export function ListsPage() {
       const detail = await getListDetail(name);
       setSelectedListDetail(detail);
       setListCompanies(Array.isArray(detail?.companies) ? detail.companies : []);
+      return detail;
     } catch {
       toast.error('Failed to load list');
       setSelectedListDetail(null);
       setListCompanies([]);
+      return null;
     } finally {
       setLoadingDetail(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void loadScreeningOptions();
   }, [loadScreeningOptions]);
+
+  useEffect(() => {
+    if (!activeScreen?.id) return;
+    if (lastDefaultActiveScreenIdRef.current === activeScreen.id) return;
+
+    lastDefaultActiveScreenIdRef.current = activeScreen.id;
+    setFilterAssociation('associated');
+    setSelectedScreeningId(activeScreen.id);
+    setSelectedList('');
+    setSelectedListDetail(null);
+    setListCompanies([]);
+    setSelectedCompanyDetail(null);
+    setDrawerOpen(false);
+  }, [activeScreen?.id]);
 
   useEffect(() => {
     void loadLists(listFilterParam);
@@ -198,12 +242,23 @@ export function ListsPage() {
 
   useEffect(() => {
     const navState = (location.state as { openListName?: string } | null) ?? null;
-    if (!navState?.openListName || selectedList === navState.openListName) return;
-    setFilterAssociation('associated');
-    setSelectedScreeningId(ALL_SCREENS_VALUE);
-    setSelectedList(navState.openListName);
-    void loadDetail(navState.openListName);
-  }, [location.state, selectedList]);
+    if (!navState?.openListName) return;
+
+    let cancelled = false;
+    const openListFromNavigation = async () => {
+      const detail = await loadDetail(navState.openListName as string);
+      if (cancelled || !detail) return;
+      setFilterAssociation(detail.screening_id ? 'associated' : 'none');
+      setSelectedScreeningId(ALL_SCREENS_VALUE);
+      setSelectedList(detail.name);
+      navigate(location.pathname, { replace: true, state: null });
+    };
+    void openListFromNavigation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, location.state, loadDetail, navigate]);
 
   useEffect(() => {
     if (selectedList && !listSummaries.some((summary) => summary.name === selectedList)) {
@@ -224,7 +279,7 @@ export function ListsPage() {
   const handleSelectList = (name: string) => {
     setSelectedList(name);
     setPromptGenerationError(null);
-    loadDetail(name);
+    void loadDetail(name);
   };
 
   const selectedSummary = useMemo(
@@ -233,15 +288,27 @@ export function ListsPage() {
   );
 
   const selectedListScreeningId = selectedListDetail?.screening_id ?? selectedSummary?.screening_id ?? null;
-  const selectedListScreenName = selectedListDetail?.screen_name ?? selectedSummary?.screen_name ?? null;
-  const selectedScreenAssociationLabel = selectedListScreenName || (selectedListScreeningId ? selectedListScreeningId : 'None');
+  const selectedListScreen = selectedListScreeningId
+    ? screeningOptionsWithActive.find((screen) => screen.id === selectedListScreeningId) ?? null
+    : null;
+  const selectedListScreenName = selectedListDetail?.screen_name
+    ?? selectedSummary?.screen_name
+    ?? (getScreenDisplayName(selectedListScreen) || null);
+  const selectedScreenAssociationLabel = selectedListScreenName || 'None';
+  const selectedFilterScreen = selectedScreeningId !== ALL_SCREENS_VALUE
+    ? screeningOptionsWithActive.find((screen) => screen.id === selectedScreeningId) ?? null
+    : null;
   const currentFilterLabel = filterAssociation === 'none'
     ? 'Lists with no associated screen'
     : selectedScreeningId === ALL_SCREENS_VALUE
       ? 'All screen-associated lists'
-      : screeningOptions.find((screen) => screen.id === selectedScreeningId)?.screen_name
-        || screeningOptions.find((screen) => screen.id === selectedScreeningId)?.original_filename
+      : getScreenDisplayName(selectedFilterScreen)
+        || (activeScreen?.id === selectedScreeningId ? activeScreen.screenName : '')
         || selectedScreeningId;
+  const createSelectedScreen = createScreeningId
+    ? screeningOptionsWithActive.find((screen) => screen.id === createScreeningId) ?? null
+    : null;
+  const createSelectedScreenLabel = getScreenDisplayName(createSelectedScreen);
 
   const handleFilterAssociationChange = (value: string) => {
     const next = value === 'none' ? 'none' : 'associated';
@@ -297,7 +364,7 @@ export function ListsPage() {
         },
       });
     } catch (err: any) {
-      const message = err?.response?.data?.detail || err?.message || 'LLM prompt generation failed or timed out.';
+      const message = extractApiErrorMessage(err, 'LLM prompt generation failed or timed out.');
       setPromptGenerationError(message);
       toast.error(`${message} Use Try again.`, { id: toastId });
     } finally {
@@ -311,16 +378,16 @@ export function ListsPage() {
     setCreating(true);
     try {
       const linkedScreen = createAssociation === 'associated'
-        ? screeningOptions.find((screen) => screen.id === createScreeningId) ?? null
+        ? screeningOptionsWithActive.find((screen) => screen.id === createScreeningId) ?? null
         : null;
-      await createList(name, linkedScreen?.id ?? null, linkedScreen?.screen_name ?? null);
+      await createList(name, linkedScreen?.id ?? null, getScreenDisplayName(linkedScreen) || null);
       toast.success(`Created "${name}"`);
       setNewName('');
       setCreateOpen(false);
       await loadLists(listFilterParam);
       handleSelectList(name);
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to create list');
+      toast.error(extractApiErrorMessage(err, 'Failed to create list'));
     } finally {
       setCreating(false);
     }
@@ -520,13 +587,13 @@ export function ListsPage() {
             {filterAssociation === 'associated' && (
               <Select value={selectedScreeningId} onValueChange={handleScreenFilterChange}>
                 <SelectTrigger className="w-full h-9 bg-surface-0 items-center text-left">
-                  <SelectValue placeholder="All associated screens" />
+                  <span className="flex-1 truncate text-left">{currentFilterLabel}</span>
                 </SelectTrigger>
                 <SelectContent className="max-h-72 overflow-y-auto">
                   <SelectItem value={ALL_SCREENS_VALUE}>All associated screens</SelectItem>
-                  {screeningOptions.map((screen) => (
+                  {screeningOptionsWithActive.map((screen) => (
                     <SelectItem key={screen.id} value={screen.id}>
-                      {screen.screen_name || screen.original_filename || screen.id}
+                      {getScreenDisplayName(screen)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -603,7 +670,9 @@ export function ListsPage() {
                           >
                             <div className="font-semibold text-sm">{summary.name}</div>
                             {isLLMGenerated && <div className="text-[11px] font-bold uppercase tracking-wide text-blue-100">LLM generated list</div>}
-                            <div>Screen Associated: {summary.screen_name || 'None'}</div>
+                            <div>
+                              Screen Associated: {summary.screen_name || getScreenDisplayName(screeningOptionsWithActive.find((screen) => screen.id === summary.screening_id)) || 'None'}
+                            </div>
                             <div>Created: {formatTooltipDate(summary.created_at)}</div>
                           </TooltipContent>
                         </Tooltip>
@@ -664,6 +733,7 @@ export function ListsPage() {
                   size="sm"
                   onClick={handleRunLLMScreening}
                   disabled={generatingPrompts}
+                  title={listCompanies.length === 0 ? 'Add companies before running LLM screening' : undefined}
                   className="text-brand hover:bg-brand/10"
                 >
                   {generatingPrompts ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Sparkles className="size-4 mr-1" />}
@@ -724,7 +794,7 @@ export function ListsPage() {
                   headerHeight={42}
                   animateRows={false}
                   rowClass="cursor-pointer hover:bg-surface-1"
-                  getRowId={(p) => getCompanyKey(p.data) || String(Math.random())}
+                  getRowId={(p) => getCompanyKey(p.data) || `${p.data?.company || 'company'}-${p.data?.added_at || ''}`}
                   overlayNoRowsTemplate={`<div class='text-text-tertiary italic py-8 text-sm'>${filterText ? 'No companies match your filter.' : 'This list is empty.'}</div>`}
                 />
               </div>
@@ -788,12 +858,14 @@ export function ListsPage() {
             {createAssociation === 'associated' && (
               <Select value={createScreeningId} onValueChange={(value) => setCreateScreeningId(value || '')}>
                 <SelectTrigger className="w-full h-9 bg-surface-0 items-center text-left">
-                  <SelectValue placeholder="Choose an existing screen" />
+                  <span className={cn('flex-1 truncate text-left', !createSelectedScreenLabel && 'text-muted-foreground')}>
+                    {createSelectedScreenLabel || 'Choose an existing screen'}
+                  </span>
                 </SelectTrigger>
                 <SelectContent className="max-h-72 overflow-y-auto">
-                  {screeningOptions.map((screen) => (
+                  {screeningOptionsWithActive.map((screen) => (
                     <SelectItem key={screen.id} value={screen.id}>
-                      {screen.screen_name || screen.original_filename || screen.id}
+                      {getScreenDisplayName(screen)}
                     </SelectItem>
                   ))}
                 </SelectContent>

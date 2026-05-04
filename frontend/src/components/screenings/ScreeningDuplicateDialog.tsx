@@ -12,6 +12,19 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 interface ScreeningDuplicateDialogProps {
   open: boolean;
   document: ScreeningDocumentSummary | null;
@@ -40,7 +53,13 @@ export function ScreeningDuplicateDialog({
   }, [defaultReuseScreeningId, screenings]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (isCreatingNew && !nextOpen) return;
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogContent showCloseButton className="!w-[680px] !max-w-[calc(100%-2rem)]">
         <DialogHeader>
           <DialogTitle>Matching screening form already exists</DialogTitle>
@@ -57,6 +76,11 @@ export function ScreeningDuplicateDialog({
         )}
 
         <div className="space-y-2">
+          {screenings.length === 0 && (
+            <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 text-sm text-text-secondary">
+              No existing drafts are linked to this document yet. Create a new screening to continue.
+            </div>
+          )}
           {screenings.map((screening) => (
             <button
               key={screening.id}
@@ -71,12 +95,19 @@ export function ScreeningDuplicateDialog({
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-medium text-text-primary">{screening.screen_name || 'Untitled draft'}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium text-text-primary">{screening.screen_name || 'Untitled draft'}</div>
+                    {screening.is_active && (
+                      <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success">
+                        Active
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-text-secondary">Status: {screening.status}</div>
                 </div>
                 <div className="text-right text-xs text-text-tertiary">
                   <div>Updated</div>
-                  <div>{screening.updated_at || '—'}</div>
+                  <div>{formatDateTime(screening.updated_at)}</div>
                 </div>
               </div>
             </button>
@@ -95,7 +126,7 @@ export function ScreeningDuplicateDialog({
             disabled={!selectedId || isCreatingNew}
           >
             <FolderOpen className="mr-2 size-4" />
-            Reuse existing
+            Open selected draft
           </Button>
           <Button onClick={onCreateNew} disabled={!document || isCreatingNew}>
             {isCreatingNew ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CopyPlus className="mr-2 size-4" />}

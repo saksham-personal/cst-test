@@ -9,10 +9,17 @@ import { Button } from '../components/ui/button';
 import { Accordion, AccordionItem, AccordionContent } from '../components/ui/accordion';
 import { Textarea } from '../components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '../components/ui/dialog';
 import { cn } from '../lib/utils';
-import { apiClient } from '../api/client';
-import { createLLMSuiteChatCompletion, getActiveScreening, listLLMSuiteModels } from '../api/endpoints';
+import {
+  analyzeCriteria,
+  createLLMSuiteChatCompletion,
+  getActiveScreening,
+  listLLMSuiteModels,
+  markCriteriaProgress,
+  refineCriteria,
+  rerunCriteriaAnalysis,
+} from '../api/endpoints';
 import { useScreenStore } from '../stores/screenStore';
 import { useSearchStore, type Keyword } from '../stores/searchStore';
 import type { LLMSuiteChatMessage, LLMSuiteModelInfo } from '../api/types';
@@ -32,6 +39,13 @@ interface CriteriaPayload {
   questions: CriteriaQuestion[];
   current_final_criteria: FinalCriteria;
 }
+
+type CriteriaAnalysisPayload = CriteriaPayload & {
+  screening_id?: string | null;
+  pipeline_step?: number;
+  pipeline_status?: string;
+  criteria_completed?: boolean;
+};
 
 interface NavigationState {
   seededScreeningPayload?: Record<string, any>;
@@ -90,6 +104,15 @@ const MOCK_PAYLOAD: CriteriaPayload = {
     content_markdown: "- Must be a **Certification Body / Registrar / Provider** of certification services.\n- Must provide at least one target certification such as **ISO 9001**, **ISO 14001**, **ISO 45001**, **ISO 27001**, **ISO 50001**, or **ISO 20000-1**.\n- Must serve customers in the **US and/or Canada**.\n- Should not be only a consulting firm unless it also directly provides **certification, audit, or registrar services**.\n- <u>Exclude companies that only provide training, software, or advisory services without issuing certifications.</u>",
   },
 };
+
+function extractCriteriaErrorMessage(error: any, fallback: string): string {
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  const message = error?.response?.data?.error?.message;
+  if (typeof message === 'string' && message.trim()) return message;
+  if (typeof error?.message === 'string' && error.message.trim()) return error.message;
+  return fallback;
+}
 
 /* ─── Icon trigger for accordion ─── */
 function AccordionIconTrigger({
@@ -208,6 +231,7 @@ export function CriteriaAnalysisPage() {
   const location = useLocation();
   const navState = (location.state as NavigationState | null) ?? null;
   const activeScreen = useScreenStore((state) => state.activeScreen);
+  const updateScreen = useScreenStore((state) => state.updateScreen);
 
   const QUESTIONS_SECTION_ID = 'criteria-questions-section';
   const FINAL_SECTION_ID = 'criteria-final-section';
@@ -230,9 +254,15 @@ export function CriteriaAnalysisPage() {
   const [chatMessages, setChatMessages] = useState<CriteriaChatMessage[]>([]);
   const [conversationId] = useState(() => crypto.randomUUID());
   const [availableModels, setAvailableModels] = useState<LLMSuiteModelInfo[]>([]);
+  const [criteriaScreeningId, setCriteriaScreeningId] = useState<string | null>(
+    navState?.sourceScreeningId ?? screeningId ?? activeScreen?.id ?? null,
+  );
+  const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
+  const [isRerunningCriteria, setIsRerunningCriteria] = useState(false);
   const bootstrappedRef = useRef(false);
   const setKeywords = useSearchStore((state) => state.setKeywords);
   const setQueryExpression = useSearchStore((state) => state.setQueryExpression);
+  const effectiveScreeningId = criteriaScreeningId ?? navState?.sourceScreeningId ?? screeningId ?? activeScreen?.id ?? null;
 
   const scrollTargetIntoPageView = useCallback((targetId: string, topOffset = 24) => {
     window.setTimeout(() => {
@@ -288,6 +318,21 @@ export function CriteriaAnalysisPage() {
     }
   }, []);
 
+  const applyCriteriaPayload = useCallback((data: CriteriaAnalysisPayload, fallbackScreeningId?: string | null) => {
+    const nextScreeningId = data.screening_id ?? fallbackScreeningId ?? null;
+    const step = Number(data.pipeline_step ?? 1);
+    const criteriaCompleted = Boolean(data.criteria_completed) || step >= 4;
+    const shouldShowQuestions = criteriaCompleted || step >= 3;
+    const shouldShowFinal = criteriaCompleted;
+
+    setCriteriaScreeningId(nextScreeningId);
+    setPayload(data);
+    setQuestions(data.questions.map(q => ({ ...q })));
+    setQuestionsVisible(shouldShowQuestions);
+    setFinalVisible(shouldShowFinal);
+    setOpenSections(shouldShowFinal ? ['final'] : shouldShowQuestions ? ['questions'] : ['initial']);
+  }, []);
+
   /* Load data — try backend first, then fall back to mock */
   const loadCriteria = useCallback(async () => {
     setLoading(true);
@@ -303,13 +348,11 @@ export function CriteriaAnalysisPage() {
           throw new Error('no-active-screen');
         }
       }
-      const { data } = await apiClient.post('/v1/criteria-analysis/analyze', {
+      const data = await analyzeCriteria({
         screening_id: sid,
         screening_payload: navState?.seededScreeningPayload ?? null,
       });
-      setPayload(data as CriteriaPayload);
-      setQuestions((data as CriteriaPayload).questions.map(q => ({ ...q })));
-      setTimeout(() => setOpenSections(['initial']), 300);
+      applyCriteriaPayload(data, sid);
     } catch (error: any) {
       if (error instanceof Error && error.message === 'no-active-screen') {
         toast.error('No screen is activated. Please activate a screen from the screening page first.');
@@ -336,13 +379,11 @@ export function CriteriaAnalysisPage() {
         return;
       }
 
-      setPayload(MOCK_PAYLOAD);
-      setQuestions(MOCK_PAYLOAD.questions.map(q => ({ ...q })));
-      setTimeout(() => setOpenSections(['initial']), 300);
+      applyCriteriaPayload(MOCK_PAYLOAD, criteriaScreeningId);
     } finally {
       setLoading(false);
     }
-  }, [screeningId, navState, navigate, activeScreen?.id, clearStageError]);
+  }, [screeningId, navState, navigate, activeScreen?.id, clearStageError, applyCriteriaPayload, criteriaScreeningId]);
 
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -354,12 +395,20 @@ export function CriteriaAnalysisPage() {
     void refreshModels();
   }, [refreshModels]);
 
-  const handleShowQuestions = () => {
+  const handleShowQuestions = useCallback(async () => {
     clearStageError();
     setQuestionsVisible(true);
     setOpenSections(['initial', 'questions']);
     scrollTargetIntoPageView(QUESTIONS_FIRST_ROW_ID);
-  };
+    if (!effectiveScreeningId) return;
+    try {
+      const response = await markCriteriaProgress({ screening_id: effectiveScreeningId, stage: 'questions' });
+      setCriteriaScreeningId(response.screening_id ?? effectiveScreeningId);
+      updateScreen(effectiveScreeningId, { pipelineStep: 'Criteria Analysis', pipelineStatus: 'active' });
+    } catch (error: any) {
+      toast.error(extractCriteriaErrorMessage(error, 'Failed to save criteria-analysis progress.'));
+    }
+  }, [clearStageError, effectiveScreeningId, scrollTargetIntoPageView, updateScreen]);
 
   const handleShowFinal = useCallback(async () => {
     // Check if any blocker questions are unanswered
@@ -377,23 +426,44 @@ export function CriteriaAnalysisPage() {
     setOpenSections(['questions']);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (effectiveScreeningId) {
+        const response = await refineCriteria({
+          screening_id: effectiveScreeningId,
+          answers: questions.map((q) => ({ id: q.id, answer: q.answer || '' })),
+        });
+        const answersById = new Map(questions.map((q) => [q.id, q.answer]));
+        applyCriteriaPayload({
+          ...response,
+          questions: response.questions.map((q) => ({ ...q, answer: answersById.get(q.id) ?? q.answer })),
+        }, effectiveScreeningId);
+        updateScreen(effectiveScreeningId, {
+          pipelineStep: 'Search',
+          pipelineStatus: 'active',
+          investmentCriteria: response.current_final_criteria.content_markdown,
+          currFinalCriteria: response.current_final_criteria.content_markdown,
+        });
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
       setFinalVisible(true);
       setOpenSections(['final']);
       scrollTargetIntoPageView(FINAL_CONTENT_ID);
     } catch (error: any) {
       setLoadErrorStage('finalize');
-      setLoadErrorMessage(error?.message || 'Failed to generate final screening criteria.');
+      setLoadErrorMessage(extractCriteriaErrorMessage(error, 'Failed to generate final screening criteria.'));
     } finally {
       setIsGeneratingFinal(false);
     }
-  }, [questions, clearStageError, scrollTargetIntoPageView])
+  }, [questions, clearStageError, effectiveScreeningId, applyCriteriaPayload, scrollTargetIntoPageView, updateScreen])
 
   const handleGenerateKeywords = async () => {
     clearStageError();
     setIsGeneratingKeywords(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
+      if (effectiveScreeningId) {
+        await markCriteriaProgress({ screening_id: effectiveScreeningId, stage: 'keywords' });
+      }
       const generatedKeywords = stubGeneratedKeywords();
       setKeywords(generatedKeywords);
       setQueryExpression('1 OR 2 OR 3');
@@ -406,7 +476,7 @@ export function CriteriaAnalysisPage() {
       });
     } catch (error: any) {
       setLoadErrorStage('keywords');
-      setLoadErrorMessage(error?.message || 'Failed to generate keywords.');
+      setLoadErrorMessage(extractCriteriaErrorMessage(error, 'Failed to generate keywords.'));
     } finally {
       setIsGeneratingKeywords(false);
     }
@@ -426,6 +496,35 @@ export function CriteriaAnalysisPage() {
       return;
     }
   }, [handleGenerateKeywords, handleShowFinal, loadErrorStage, loadCriteria]);
+
+  const handleConfirmRerunCriteria = useCallback(async () => {
+    if (!effectiveScreeningId) {
+      toast.error('No active screening is available to re-run criteria analysis.');
+      return;
+    }
+
+    clearStageError();
+    setIsRerunningCriteria(true);
+    try {
+      const response = await rerunCriteriaAnalysis(effectiveScreeningId);
+      applyCriteriaPayload(response, effectiveScreeningId);
+      setExpandedQuestions([]);
+      setChatMessages([]);
+      setChatMessage('');
+      setIsRerunDialogOpen(false);
+      updateScreen(effectiveScreeningId, {
+        pipelineStep: 'Criteria Analysis',
+        pipelineStatus: 'active',
+        investmentCriteria: 'No criteria saved yet.',
+        currFinalCriteria: null,
+      });
+      toast.success('Criteria analysis was reset. The database will now resume from the first criteria step.');
+    } catch (error: any) {
+      toast.error(extractCriteriaErrorMessage(error, 'Failed to reset criteria analysis.'));
+    } finally {
+      setIsRerunningCriteria(false);
+    }
+  }, [applyCriteriaPayload, clearStageError, effectiveScreeningId, updateScreen]);
 
   const handleSendChat = useCallback(async () => {
     if (!chatMessage.trim()) return;
@@ -461,7 +560,7 @@ export function CriteriaAnalysisPage() {
         sourcesEnabled: false,
         metadata: {
           route: 'criteria-analysis',
-          linkedScreeningId: navState?.sourceScreeningId ?? screeningId ?? activeScreen?.id ?? null,
+          linkedScreeningId: effectiveScreeningId,
         },
       });
 
@@ -486,14 +585,13 @@ export function CriteriaAnalysisPage() {
       setIsSendingChat(false);
     }
   }, [
-    activeScreen?.id,
     availableModels,
     chatMessage,
     clearStageError,
     conversationId,
+    effectiveScreeningId,
     navState?.sourceScreeningId,
     payload?.current_final_criteria.content_markdown,
-    screeningId,
   ]);
 
   const handleQuestionChange = (id: string, value: string) => {
@@ -532,9 +630,37 @@ export function CriteriaAnalysisPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface-1">
       <PageHeader title="Criteria Analysis">
+        <Dialog open={isRerunDialogOpen} onOpenChange={setIsRerunDialogOpen}>
+          <DialogTrigger render={
+            <Button variant="outline" size="sm" className="gap-2" disabled={!effectiveScreeningId || isRerunningCriteria} />
+          }>
+            <RotateCcw className="size-4" /> Repeat
+          </DialogTrigger>
+          <DialogContent showCloseButton className="!max-w-md !w-[440px]">
+            <DialogHeader>
+              <DialogTitle>Re-run criteria analysis from scratch?</DialogTitle>
+              <DialogDescription>
+                This will reset the saved criteria-analysis progress for this active screen, clear the current final criteria in the database, and start again from the initial understanding step.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose render={<Button variant="ghost" disabled={isRerunningCriteria} />}>
+                Cancel
+              </DialogClose>
+              <Button
+                onClick={handleConfirmRerunCriteria}
+                disabled={isRerunningCriteria || !effectiveScreeningId}
+                className="bg-danger text-white hover:bg-danger/90"
+              >
+                {isRerunningCriteria && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Re-run from scratch
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {navState?.sourceScreeningId && (
-          <Button variant="ghost" size="sm" onClick={() => navigate('/search')} className="text-text-secondary gap-2">
-            <ArrowLeft className="size-4" /> Back to Search
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/screenings/${navState.sourceScreeningId}`)} className="text-text-secondary gap-2">
+            <ArrowLeft className="size-4" /> Back to Screening Draft
           </Button>
         )}
       </PageHeader>

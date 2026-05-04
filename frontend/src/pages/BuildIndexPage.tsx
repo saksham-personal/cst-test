@@ -8,6 +8,7 @@ import { Play, CheckCircle2, Loader2, XCircle, Upload, FileSpreadsheet, X } from
 import { uploadIndexJob, getIndexJobs, activateIndexJob, cancelIndexJob } from '../api/endpoints';
 import type { IndexJobDetail } from '../api/types';
 import { toast } from 'sonner';
+import { extractApiErrorMessage } from '../api/client';
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -110,8 +111,7 @@ export function BuildIndexPage() {
       if (fileInputRef.current) fileInputRef.current.value = '';
       await loadJobs();
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Failed to start build';
-      toast.error(typeof detail === 'string' ? detail : 'Failed to start build', { id: toastId });
+      toast.error(extractApiErrorMessage(err, 'Failed to start build'), { id: toastId });
     } finally {
       setIsSubmitting(false);
     }
@@ -126,8 +126,7 @@ export function BuildIndexPage() {
       toast.success(activatedJob.message || 'Bundle activated', { id: toastId });
       await loadJobs();
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Activation failed';
-      toast.error(typeof detail === 'string' ? detail : 'Activation failed', { id: toastId });
+      toast.error(extractApiErrorMessage(err, 'Activation failed'), { id: toastId });
     }
   };
 
@@ -139,8 +138,7 @@ export function BuildIndexPage() {
       toast.success(cancelledJob.message || 'Index build cancelled', { id: toastId });
       await loadJobs();
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Cancellation failed';
-      toast.error(typeof detail === 'string' ? detail : 'Cancellation failed', { id: toastId });
+      toast.error(extractApiErrorMessage(err, 'Cancellation failed'), { id: toastId });
     }
   };
 
@@ -292,7 +290,7 @@ export function BuildIndexPage() {
                     <span className="font-semibold text-sm">
                       {job.job_id.slice(0, 8)}
                       <span className="text-muted-foreground mx-1">|</span>
-                      {job.output_dir?.split('/').pop() || 'unnamed'}
+                      {job.output_dir?.split(/[\\/]/).pop() || 'unnamed'}
                     </span>
                     <span className="text-xs font-semibold flex items-center gap-1">
                       {stateIcon(job.state)} {job.state}

@@ -28,8 +28,14 @@ export function ScreeningDetailPage() {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [savingByField, setSavingByField] = useState<Record<string, boolean>>({});
   const upsertScreeningDetail = useScreenStore((state) => state.upsertScreeningDetail);
+  const activateScreeningDetail = useScreenStore((state) => state.activateScreeningDetail);
 
   const pdfUrl = useMemo(() => (screening ? getScreeningPdfUrl(screening.id) : ''), [screening]);
+  const hasTopLevelChanges = Boolean(
+    screening
+    && (screenNameInput !== (screening.screen_name ?? '') || websiteInput !== (screening.website ?? '')),
+  );
+  const isSavingTopLevel = Boolean(savingByField.screen_name || savingByField.website);
 
   const loadScreening = useCallback(async () => {
     if (!id) return;
@@ -60,14 +66,19 @@ export function ScreeningDetailPage() {
     });
     try {
       const saved = await patchScreeningFields(id, payload);
-      setScreening((current) => current ? {
-        ...current,
-        status: saved.status,
-        screen_name: saved.screen_name,
-        website: saved.website,
-        edited_fields: saved.edited_fields,
-        updated_at: saved.updated_at,
-      } : current);
+      setScreening((current) => {
+        if (!current) return current;
+        const next = {
+          ...current,
+          status: saved.status,
+          screen_name: saved.screen_name,
+          website: saved.website,
+          edited_fields: saved.edited_fields,
+          updated_at: saved.updated_at,
+        };
+        upsertScreeningDetail(next);
+        return next;
+      });
       setScreenNameInput(saved.screen_name ?? '');
       setWebsiteInput(saved.website ?? '');
     } finally {
@@ -79,7 +90,7 @@ export function ScreeningDetailPage() {
         return next;
       });
     }
-  }, [id, screening]);
+  }, [id, screening, upsertScreeningDetail]);
 
   const handleSaveField = useCallback(async (fieldKey: string, nextValue: string) => {
     await persistPatch([fieldKey], {
@@ -108,6 +119,7 @@ export function ScreeningDetailPage() {
 
   const handleStartScreening = async () => {
     if (!id) return;
+    if (!screening) return;
     if (!screenNameInput.trim()) {
       toast.warning('Screen Name is required before starting screening');
       return;
@@ -116,7 +128,16 @@ export function ScreeningDetailPage() {
     try {
       await flushTopLevelIfNeeded();
       const response = await startScreening(id);
-      setScreening((current) => current ? { ...current, status: response.status } : current);
+      const activatedScreening: ScreeningDetail = {
+        ...screening,
+        status: response.status,
+        pipeline_step: 2,
+        pipeline_status: 'AWAITING_LLM_QA',
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+      setScreening(activatedScreening);
+      activateScreeningDetail(activatedScreening);
       toast.success(response.message);
       navigate(`/criteria-analysis/${id}`, {
         state: {
@@ -155,7 +176,11 @@ export function ScreeningDetailPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-surface-1">
       <PageHeader title="Screening Draft">
-        <Button onClick={handleStartScreening} disabled={isStarting}>
+        <Button
+          onClick={handleStartScreening}
+          disabled={isStarting || isSavingTopLevel || !screenNameInput.trim()}
+          title={!screenNameInput.trim() ? 'Screen Name is required before starting screening' : undefined}
+        >
           {isStarting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Play className="mr-2 size-4" />}
           Start Screening
         </Button>
@@ -209,8 +234,18 @@ export function ScreeningDetailPage() {
               </div>
 
               <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 text-sm text-text-secondary md:col-span-2">
-                <div>Source PDF: <span className="font-medium text-text-primary">{screening.original_filename}</span></div>
-                <div className="mt-1">Status: <span className="font-medium text-text-primary">{screening.status}</span></div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <div>Source PDF: <span className="font-medium text-text-primary">{screening.original_filename}</span></div>
+                  <div>Status: <span className="font-medium text-text-primary">{screening.status}</span></div>
+                  {isSavingTopLevel && (
+                    <span className="inline-flex items-center gap-1 text-brand">
+                      <Loader2 className="size-3 animate-spin" /> Saving…
+                    </span>
+                  )}
+                  {!isSavingTopLevel && hasTopLevelChanges && (
+                    <span className="font-medium text-amber-600">Unsaved changes</span>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
